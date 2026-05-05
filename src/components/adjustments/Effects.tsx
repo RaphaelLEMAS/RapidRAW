@@ -82,6 +82,30 @@ export default function EffectsPanel({
             onDragStateChange={onDragStateChange}
           />
         )}
+
+        {isForMask && (
+          <>
+            <Slider
+              label="Lens Blur Intensity"
+              max={100}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange('lensBlurAmount', e.target.value)}
+              step={1}
+              value={adjustments.lensBlurAmount || 0}
+              onDragStateChange={onDragStateChange}
+            />
+
+            <Slider
+              label="Lens Blur Radius"
+              max={100}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange('lensBlurRadius', e.target.value)}
+              step={1}
+              value={adjustments.lensBlurRadius || 0}
+              onDragStateChange={onDragStateChange}
+            />
+          </>
+        )}
       </div>
 
       {!isForMask && (

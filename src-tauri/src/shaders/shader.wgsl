@@ -111,6 +111,10 @@ struct GlobalAdjustments {
     halation_amount: f32,
     flare_amount: f32,
     sharpness_threshold: f32,
+
+    lens_blur_amount: f32,
+    lens_blur_radius: f32,
+
 }
 
 struct MaskAdjustments {
@@ -137,6 +141,9 @@ struct MaskAdjustments {
     halation_amount: f32,
     flare_amount: f32,
     sharpness_threshold: f32,
+
+    lens_blur_amount: f32,
+    lens_blur_radius: f32,
 
     _pad_cg1: f32,
     _pad_cg2: f32,
@@ -1410,6 +1417,21 @@ fn apply_halation(
     return contrast_reduced + halation_glow * amount * 2.5;
 }
 
+fn apply_lens_blur(
+    color: vec3<f32>,
+    blurred_color: vec3<f32>,
+    intensity: f32,
+    radius: f32
+) -> vec3<f32> {
+    if (intensity <= 0.0 || radius <= 0.0) {
+        return color;
+    }
+
+    let blur_factor = clamp(intensity * (radius / 100.0), 0.0, 1.0);
+
+    return mix(color, blurred_color, blur_factor);
+}
+
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let out_dims = vec2<u32>(textureDimensions(output_texture));
@@ -1459,6 +1481,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     var t_halation = adjustments.global.halation_amount;
     var t_flare = adjustments.global.flare_amount;
     var t_sharpness = adjustments.global.sharpness;
+    var t_lens_blur_amount: f32 = adjustments.global.lens_blur_amount;
+    var t_lens_blur_radius: f32 = adjustments.global.lens_blur_radius;
 
     var h0_h = adjustments.global.hsl[0].hue; var h0_s = adjustments.global.hsl[0].saturation; var h0_l = adjustments.global.hsl[0].luminance;
     var h1_h = adjustments.global.hsl[1].hue; var h1_s = adjustments.global.hsl[1].saturation; var h1_l = adjustments.global.hsl[1].luminance;
@@ -1496,6 +1520,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             t_glow += m.glow_amount * influence;
             t_halation += m.halation_amount * influence;
             t_flare += m.flare_amount * influence;
+
+            t_lens_blur_amount += m.lens_blur_amount * influence;
+            t_lens_blur_radius += m.lens_blur_radius * influence;
 
             h0_h += m.hsl[0].hue * influence; h0_s += m.hsl[0].saturation * influence; h0_l += m.hsl[0].luminance * influence;
             h1_h += m.hsl[1].hue * influence; h1_s += m.hsl[1].saturation * influence; h1_l += m.hsl[1].luminance * influence;
@@ -1580,6 +1607,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         let protection = 1.0 - smoothstep(0.7, 1.8, perceptual_luma);
         processed_rgb += flare_color * t_flare * protection;
+    }
+
+    if (t_lens_blur_amount > 0.0) {
+        processed_rgb = apply_lens_blur(
+            processed_rgb, tonal_blurred, t_lens_blur_amount, t_lens_blur_radius
+        );
     }
 
     var composite_rgb_linear = apply_dehaze(processed_rgb, structure_blurred, is_raw, t_dehaze);

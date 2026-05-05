@@ -1330,6 +1330,9 @@ pub struct GlobalAdjustments {
     pub halation_amount: f32,
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
+
+    pub lens_blur_amount: f32,
+    pub lens_blur_radius: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -1358,6 +1361,9 @@ pub struct MaskAdjustments {
     pub halation_amount: f32,
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
+
+    pub lens_blur_amount: f32,
+    pub lens_blur_radius: f32,
 
     _pad_cg1: f32,
     _pad_cg2: f32,
@@ -1446,6 +1452,7 @@ struct AdjustmentScales {
     glow: f32,
     halation: f32,
     flares: f32,
+    lens_blur: f32,
 }
 
 const SCALES: AdjustmentScales = AdjustmentScales {
@@ -1495,6 +1502,7 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     glow: 100.0,
     halation: 100.0,
     flares: 100.0,
+    lens_blur: 100.0,
 };
 
 fn parse_hsl_adjustments(js_hsl: &serde_json::Value) -> [HslColor; 8] {
@@ -2041,6 +2049,8 @@ fn get_global_adjustments_from_json(
         glow_amount: get_val("effects", "glowAmount", SCALES.glow, None),
         halation_amount: get_val("effects", "halationAmount", SCALES.halation, None),
         flare_amount: get_val("effects", "flareAmount", SCALES.flares, None),
+        lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur, Some(0.0)),
+        lens_blur_radius: get_val("effects", "lensBlurRadius", SCALES.lens_blur, Some(0.0)),
         sharpness_threshold: get_val(
             "details",
             "sharpnessThreshold",
@@ -2123,6 +2133,8 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         glow_amount: get_val("effects", "glowAmount", SCALES.glow),
         halation_amount: get_val("effects", "halationAmount", SCALES.halation),
         flare_amount: get_val("effects", "flareAmount", SCALES.flares),
+        lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur),
+        lens_blur_radius: get_val("effects", "lensBlurRadius", SCALES.lens_blur),
         sharpness_threshold: get_val("details", "sharpnessThreshold", SCALES.sharpness_threshold),
 
         _pad_cg1: 0.0,
