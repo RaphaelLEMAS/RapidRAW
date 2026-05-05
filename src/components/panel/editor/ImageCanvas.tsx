@@ -1968,6 +1968,7 @@ const ImageCanvas = memo(
               >
                 {displayState.base && !isWgpuActive && (
                   <image
+                    key={displayState.base}
                     href={displayState.base}
                     x="0"
                     y="0"
@@ -1979,6 +1980,7 @@ const ImageCanvas = memo(
 
                 {displayState.fade && !isWgpuActive && (
                   <image
+                    key={displayState.fade + (isFadingIn ? '-fade' : '')}
                     href={displayState.fade}
                     x="0"
                     y="0"
@@ -1994,6 +1996,7 @@ const ImageCanvas = memo(
 
                 {visiblePatch && !isWgpuActive && (
                   <image
+                    key={visiblePatch.url + '-patch'}
                     href={visiblePatch.url}
                     x={`${visiblePatch.normX * 100}%`}
                     y={`${visiblePatch.normY * 100}%`}

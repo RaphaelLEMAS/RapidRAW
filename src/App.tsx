@@ -354,6 +354,8 @@ function App() {
   const [interactivePatch, setInteractivePatch] = useState<InteractivePatch | null>(null);
   const lastZoomPatchTime = useRef<number>(0);
   const dragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stuckRecoveryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPreviewUpdateRef = useRef<number>(0);
   const prevAdjustmentsRef = useRef<{ path: string; adjustments: Adjustments } | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [theme, setTheme] = useState(DEFAULT_THEME_ID);
@@ -545,6 +547,7 @@ function App() {
     Math.min(compactEditorPanelHeightOverride ?? compactEditorPanelDefaultHeight, compactEditorPanelMaxHeight),
   );
   const compactEditorPanelCollapsedHeight = 96;
+  const hasRenderedFirstPreviewRef = useRef<boolean>(false);
   const [hasRenderedFirstFrame, setHasRenderedFirstFrame] = useState(false);
 
   useEffect(() => {
@@ -1657,25 +1660,37 @@ function App() {
             const blob = new Blob([buffer], { type: 'image/jpeg' });
             const url = URL.createObjectURL(blob);
 
-            if (currentPath !== selectedImagePathRef.current || jobId < latestRenderedJobIdRef.current) {
-              URL.revokeObjectURL(url);
-              return;
-            }
+            if (currentPath !== selectedImagePathRef.current || jobId <= latestRenderedJobIdRef.current) {
+               const wasSuperseded = jobId < latestRenderedJobIdRef.current;
+               URL.revokeObjectURL(url);
+               if (!wasSuperseded && currentPath === selectedImagePathRef.current) {
+                 invoke(Invokes.ApplyAdjustments, {
+                   jsAdjustments: adjustments,
+                   is_interactive: false,
+                   target_resolution: null,
+                   roi: null,
+                   compute_waveform: !!isWaveformVisible,
+                   active_waveform_channel: activeWaveformChannelRef.current || null,
+                 }).catch(() => {});
+               }
+               return;
+             }
 
             setFinalPreviewUrl((prevUrl) => {
+              lastPreviewUpdateRef.current = Date.now();
               if (prevUrl && prevUrl.startsWith('blob:') && !imageCacheRef.current.isProtected(prevUrl)) {
                 setTimeout(() => {
                   if (!imageCacheRef.current.isProtected(prevUrl)) {
                     URL.revokeObjectURL(prevUrl);
                   }
-                }, 250);
+                }, 100);
               }
               return url;
             });
 
             setInteractivePatch((prev) => {
               if (prev && prev.url) {
-                setTimeout(() => URL.revokeObjectURL(prev.url), 500);
+                setTimeout(() => URL.revokeObjectURL(prev.url), 200);
               }
               return null;
             });
@@ -2485,6 +2500,7 @@ function App() {
     debouncedSetHistory.cancel();
 
     const lastActivePath = selectedImage?.path ?? null;
+    hasRenderedFirstPreviewRef.current = false;
     setHasRenderedFirstFrame(false);
     selectedImagePathRef.current = null;
     setSelectedImage(null);
@@ -2532,6 +2548,7 @@ function App() {
         (originalSize.width !== cached.originalSize.width || originalSize.height !== cached.originalSize.height);
 
       if (!isCachedInBackend || hasDifferentResolution) {
+        hasRenderedFirstPreviewRef.current = false;
         setHasRenderedFirstFrame(false);
       }
 
@@ -3194,14 +3211,32 @@ function App() {
 
     const targetRes = calculateTargetRes();
 
+   if (stuckRecoveryTimer.current) {
+      clearTimeout(stuckRecoveryTimer.current);
+      stuckRecoveryTimer.current = null;
+    }
+
     if (isSliderDragging) {
+      lastPreviewUpdateRef.current = Date.now();
       if (appSettings?.enableLivePreviews !== false) {
         applyAdjustments(adjustments, true, targetRes);
       }
     } else {
       dragIdleTimer.current = setTimeout(() => {
         currentResRef.current = targetRes;
+        lastPreviewUpdateRef.current = Date.now();
         applyAdjustments(adjustments, false, targetRes);
+
+        const isWgpuDisabled = appSettings?.useWgpuRenderer === false;
+        if (isWgpuDisabled && selectedImage?.isReady) {
+          stuckRecoveryTimer.current = setTimeout(() => {
+            if ((Date.now() - lastPreviewUpdateRef.current) > 2000) {
+              log.warn('Android preview recovery: no update in 2s, re-triggering render');
+              applyAdjustments(adjustments, false, targetRes);
+            }
+          }, 2500);
+        }
+
         debouncedSave(selectedImage.path, adjustments);
 
         const otherPaths = multiSelectedPaths.filter((p) => p !== selectedImage.path);
@@ -3229,8 +3264,9 @@ function App() {
       }, 50);
     }
 
-    return () => {
+  return () => {
       if (dragIdleTimer.current) clearTimeout(dragIdleTimer.current);
+      if (stuckRecoveryTimer.current) clearTimeout(stuckRecoveryTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -3457,6 +3493,8 @@ function App() {
     const listeners = [
       listen('preview-update-uncropped', (event: any) => {
         if (isEffectActive) {
+          hasRenderedFirstPreviewRef.current = true;
+          lastPreviewUpdateRef.current = Date.now();
           setUncroppedAdjustedPreviewUrl(event.payload);
         }
       }),
@@ -3638,6 +3676,7 @@ function App() {
       }),
       listen('wgpu-frame-ready', (event: any) => {
         if (isEffectActive && event.payload?.path === selectedImagePathRef.current) {
+          hasRenderedFirstPreviewRef.current = true;
           setHasRenderedFirstFrame(true);
         }
       }),
