@@ -17,7 +17,7 @@
 
 </div>
 
-# RapidRAW
+# RapidRAW Custom Androids
 
 > A beautiful, non-destructive, and GPU-accelerated RAW image editor built with performance in mind.
 
