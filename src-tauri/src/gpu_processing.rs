@@ -909,9 +909,26 @@ impl GpuProcessor {
             cache: None,
         });
 
+        // Debug: print struct sizes to find the buffer size mismatch (wgpu error: 45384 vs expected 45392)
+        let ga_size = std::mem::size_of::<GlobalAdjustments>();
+        let ma_size = std::mem::size_of::<MaskAdjustments>();
+        let all_size = std::mem::size_of::<AllAdjustments>();
+        log::info!(
+            "GPU struct sizes: GlobalAdj={} MaskAdj={} AllAdj={}",
+            ga_size, ma_size, all_size
+        );
+
+        // Assert that Rust struct matches WGSL shader layout (45392 bytes)
+        assert_eq!(
+            all_size, 45392,
+            "AllAdjustments size mismatch! Rust produces {} but WGSL shader expects 45392. \n\
+             Check field order/types in image_processing.rs against shaders/shader.wgsl",
+            all_size
+        );
+
         let adjustments_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Adjustments Buffer"),
-            size: std::mem::size_of::<AllAdjustments>() as u64,
+            size: all_size as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

@@ -1394,6 +1394,35 @@ pub struct MaskAdjustments {
 
 pub const MAX_MASKS: usize = 32;
 
+// Expected struct sizes matching WGSL shader.wgsl layout (45392 bytes)
+// If this compile-time assertion fails, Rust and WGSL struct layouts don't match.
+pub const EXPECTED_ALL_ADJUSTMENTS_SIZE: usize = 45392;
+pub const EXPECTED_GLOBAL_ADJUSTMENTS_SIZE: usize = 1600;
+pub const EXPECTED_MASK_ADJUSTMENTS_SIZE: usize = 1372;
+
+const _: () = assert!(
+    std::mem::size_of::<GlobalAdjustments>() == EXPECTED_GLOBAL_ADJUSTMENTS_SIZE,
+    "GlobalAdjustments size mismatch: {} vs expected {}",
+    std::mem::size_of::<GlobalAdjustments>(),
+    EXPECTED_GLOBAL_ADJUSTMENTS_SIZE
+);
+
+const _: () = assert!(
+    std::mem::size_of::<MaskAdjustments>() == EXPECTED_MASK_ADJUSTMENTS_SIZE,
+    "MaskAdjustments size mismatch: {} vs expected {}",
+    std::mem::size_of::<MaskAdjustments>(),
+    EXPECTED_MASK_ADJUSTMENTS_SIZE
+);
+
+const _: () = assert!(
+    std::mem::size_of::<AllAdjustments>() == EXPECTED_ALL_ADJUSTMENTS_SIZE,
+    "AllAdjustments size mismatch: {} vs expected {}. \n\
+     Rust and WGSL struct layouts must match exactly for GPU buffer binding. \n\
+     Check field order/types in image_processing.rs against shaders/shader.wgsl",
+    std::mem::size_of::<AllAdjustments>(),
+    EXPECTED_ALL_ADJUSTMENTS_SIZE
+);
+
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Default)]
 #[repr(C)]
 pub struct AllAdjustments {
@@ -1403,6 +1432,19 @@ pub struct AllAdjustments {
     pub tile_offset_x: u32,
     pub tile_offset_y: u32,
     pub mask_atlas_cols: u32,
+}
+
+// Runtime size check - will panic if Rust struct doesn't match WGSL shader layout
+pub fn assert_gpu_struct_sizes() {
+    let rust_size = std::mem::size_of::<AllAdjustments>();
+    if rust_size != EXPECTED_ALL_ADJUSTMENTS_SIZE {
+        panic!(
+            "GPU buffer size mismatch: AllAdjustments is {} bytes but WGSL shader expects {}. \n\
+             This causes wgpu validation error: 'buffer bound at binding index 2 is bound with size {} where the shader expects {}'. \n\
+             Check that Rust struct field order/types match WGSL in shaders/shader.wgsl.",
+            rust_size, EXPECTED_ALL_ADJUSTMENTS_SIZE, rust_size, EXPECTED_ALL_ADJUSTMENTS_SIZE
+        );
+    }
 }
 
 struct AdjustmentScales {
