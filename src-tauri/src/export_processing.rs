@@ -605,7 +605,7 @@ fn export_adjustments_as_lut(
     all_adjustments.global.clarity = 0.0;
     all_adjustments.global.dehaze = 0.0;
     all_adjustments.global.structure = 0.0;
-    all_adjustments.global.centré = 0.0;
+    all_adjustments.global.centre = 0.0;
     all_adjustments.global.glow_amount = 0.0;
     all_adjustments.global.halation_amount = 0.0;
     all_adjustments.global.flare_amount = 0.0;
