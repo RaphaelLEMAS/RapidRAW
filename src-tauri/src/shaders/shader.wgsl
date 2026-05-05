@@ -1422,7 +1422,7 @@ fn apply_lens_blur(
     blurred_color: vec3<f32>,
     intensity: f32,
     radius: f32,
-    coord: vec2<f32>
+    coord: vec2<u32>
 ) -> vec3<f32> {
     if (intensity <= 0.0 || radius <= 0.0) {
         return color;
@@ -1443,9 +1443,10 @@ fn apply_lens_blur(
     let edge_softness = smoothstep(0.0, 0.3, strength) * (1.0 - smoothstep(0.7, 1.0, strength));
     let bokeh_weight = mix(falloff_curve, falloff_curve * 1.4, edge_softness);
 
+    let coord_f = vec2<f32>(coord);
     let depth_distortion = vec2<f32>(
-        sin(coord.y * 12.9898 + coord.x * 78.233) * 0.002 * effective_radius,
-        cos(coord.x * 45.164 + coord.y * 23.567) * 0.002 * effective_radius
+        sin(coord_f.y * 12.9898 + coord_f.x * 78.233) * 0.002 * effective_radius,
+        cos(coord_f.x * 45.164 + coord_f.y * 23.567) * 0.002 * effective_radius
     );
 
     let final_weight = clamp(bokeh_weight * (1.0 - length(depth_distortion)), 0.0, 1.0);
