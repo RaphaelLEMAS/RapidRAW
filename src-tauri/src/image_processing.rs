@@ -1405,17 +1405,6 @@ pub struct AllAdjustments {
     pub mask_atlas_cols: u32,
 }
 
-// Runtime size check - logs actual struct sizes for debugging GPU buffer mismatch.
-pub fn assert_gpu_struct_sizes() {
-    let ga = std::mem::size_of::<GlobalAdjustments>();
-    let ma = std::mem::size_of::<MaskAdjustments>();
-    let all = std::mem::size_of::<AllAdjustments>();
-    log::info!(
-        "GPU struct sizes: GlobalAdj={} MaskAdj={} AllAdj={}",
-        ga, ma, all
-    );
-}
-
 struct AdjustmentScales {
     exposure: f32,
     brightness: f32,
