@@ -1333,6 +1333,9 @@ pub struct GlobalAdjustments {
 
     pub lens_blur_amount: f32,
     pub lens_blur_radius: f32,
+
+    _pad16_1: f32,
+    _pad16_2: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
