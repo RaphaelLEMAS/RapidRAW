@@ -1421,15 +1421,36 @@ fn apply_lens_blur(
     color: vec3<f32>,
     blurred_color: vec3<f32>,
     intensity: f32,
-    radius: f32
+    radius: f32,
+    coord: vec2<f32>
 ) -> vec3<f32> {
     if (intensity <= 0.0 || radius <= 0.0) {
         return color;
     }
 
-    let blur_factor = clamp(intensity * (radius / 100.0), 0.0, 1.0);
+    let effective_radius = clamp(radius / 100.0, 0.0, 1.0);
+    let strength = clamp(intensity * (1.0 + effective_radius * 2.5), 0.0, 1.0);
 
-    return mix(color, blurred_color, blur_factor);
+    let color_luma = get_luma(max(color, vec3<f32>(0.0)));
+    let blurred_luma = get_luma(max(blurred_color, vec3<f32>(0.0)));
+
+    let luma_ratio = mix(1.0, max(blurred_luma / max(color_luma, 0.001), 0.5), smoothstep(0.5, 0.95, color_luma));
+    let normalized_blur = blurred_color * luma_ratio;
+
+    let aperture_shape = mix(0.6, 1.2, effective_radius);
+    let falloff_curve = pow(strength, aperture_shape);
+
+    let edge_softness = smoothstep(0.0, 0.3, strength) * (1.0 - smoothstep(0.7, 1.0, strength));
+    let bokeh_weight = mix(falloff_curve, falloff_curve * 1.4, edge_softness);
+
+    let depth_distortion = vec2<f32>(
+        sin(coord.y * 12.9898 + coord.x * 78.233) * 0.002 * effective_radius,
+        cos(coord.x * 45.164 + coord.y * 23.567) * 0.002 * effective_radius
+    );
+
+    let final_weight = clamp(bokeh_weight * (1.0 - length(depth_distortion)), 0.0, 1.0);
+
+    return mix(color, normalized_blur, final_weight);
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -1611,7 +1632,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     if (t_lens_blur_amount > 0.0) {
         processed_rgb = apply_lens_blur(
-            processed_rgb, tonal_blurred, t_lens_blur_amount, t_lens_blur_radius
+            processed_rgb, tonal_blurred, t_lens_blur_amount, t_lens_blur_radius, absolute_coord
         );
     }
 
