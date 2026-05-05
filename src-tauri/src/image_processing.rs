@@ -1394,6 +1394,17 @@ pub struct MaskAdjustments {
 
 pub const MAX_MASKS: usize = 32;
 
+#[derive(Debug, Clone, Copy, Pod, Zeroable, Default)]
+#[repr(C)]
+pub struct AllAdjustments {
+    pub global: GlobalAdjustments,
+    pub mask_adjustments: [MaskAdjustments; MAX_MASKS],
+    pub mask_count: u32,
+    pub tile_offset_x: u32,
+    pub tile_offset_y: u32,
+    pub mask_atlas_cols: u32,
+}
+
 // Runtime size check - logs actual struct sizes for debugging GPU buffer mismatch.
 pub fn assert_gpu_struct_sizes() {
     let ga = std::mem::size_of::<GlobalAdjustments>();
