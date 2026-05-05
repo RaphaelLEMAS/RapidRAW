@@ -1268,7 +1268,7 @@ pub struct GlobalAdjustments {
     pub clarity: f32,
     pub dehaze: f32,
     pub structure: f32,
-    pub centré: f32,
+    pub centre: f32,
     pub vignette_amount: f32,
     pub vignette_midpoint: f32,
     pub vignette_roundness: f32,
@@ -1333,9 +1333,6 @@ pub struct GlobalAdjustments {
 
     pub lens_blur_amount: f32,
     pub lens_blur_radius: f32,
-
-    _pad16_1: f32,
-    _pad16_2: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -1428,7 +1425,7 @@ struct AdjustmentScales {
     clarity: f32,
     dehaze: f32,
     structure: f32,
-    centré: f32,
+    centre: f32,
 
     vignette_amount: f32,
     vignette_midpoint: f32,
@@ -1478,7 +1475,7 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     clarity: 200.0,
     dehaze: 750.0,
     structure: 200.0,
-    centré: 250.0,
+    centre: 250.0,
 
     vignette_amount: 100.0,
     vignette_midpoint: 100.0,
@@ -1927,7 +1924,7 @@ fn get_global_adjustments_from_json(
         clarity: get_val("details", "clarity", SCALES.clarity, None),
         dehaze: get_val("details", "dehaze", SCALES.dehaze, None),
         structure: get_val("details", "structure", SCALES.structure, None),
-        centré: get_val("details", "centré", SCALES.centré, None),
+        centre: get_val("details", "centré", SCALES.centre, None),
         vignette_amount: get_val("effects", "vignetteAmount", SCALES.vignette_amount, None),
         vignette_midpoint: get_val(
             "effects",
@@ -2061,9 +2058,6 @@ fn get_global_adjustments_from_json(
 
         lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur, Some(0.0)),
         lens_blur_radius: get_val("effects", "lensBlurRadius", SCALES.lens_blur, Some(0.0)),
-
-        _pad16_1: 0.0,
-        _pad16_2: 0.0,
     }
 }
 
