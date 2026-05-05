@@ -1333,6 +1333,9 @@ pub struct GlobalAdjustments {
 
     pub lens_blur_amount: f32,
     pub lens_blur_radius: f32,
+
+    _pad16_1: f32,
+    _pad16_2: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2058,6 +2061,9 @@ fn get_global_adjustments_from_json(
 
         lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur, Some(0.0)),
         lens_blur_radius: get_val("effects", "lensBlurRadius", SCALES.lens_blur, Some(0.0)),
+
+        _pad16_1: 0.0,
+        _pad16_2: 0.0,
     }
 }
 
