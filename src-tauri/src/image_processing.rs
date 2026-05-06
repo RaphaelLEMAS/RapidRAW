@@ -1330,6 +1330,16 @@ pub struct GlobalAdjustments {
     pub halation_amount: f32,
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
+
+    // Lens Blur
+    pub lens_blur_amount: f32,
+    pub lens_fstop: f32,
+    pub lens_radius: f32,
+    pub bokeh_shape: u32,
+    pub lens_anisotropy: f32,
+    pub lens_falloff_enabled: u32,
+    pub lens_falloff_amount: f32,
+    pub falloff_mode: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -1359,6 +1369,16 @@ pub struct MaskAdjustments {
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
 
+    // Lens Blur
+    pub lens_blur_amount: f32,
+    pub lens_fstop: f32,
+    pub lens_radius: f32,
+    pub bokeh_shape: u32,
+    pub lens_anisotropy: f32,
+    pub lens_falloff_enabled: u32,
+    pub lens_falloff_amount: f32,
+    pub falloff_mode: u32,
+
     _pad_cg1: f32,
     _pad_cg2: f32,
     _pad_cg3: f32,
@@ -1380,6 +1400,17 @@ pub struct MaskAdjustments {
     pub red_curve_count: u32,
     pub green_curve_count: u32,
     pub blue_curve_count: u32,
+
+    // Lens Blur
+    pub lens_blur_amount: f32,
+    pub lens_fstop: f32,
+    pub lens_radius: f32,
+    pub bokeh_shape: u32,
+    pub lens_anisotropy: f32,
+    pub lens_falloff_enabled: u32,
+    pub lens_falloff_amount: f32,
+    pub falloff_mode: u32,
+
     _pad_end4: f32,
     _pad_end5: f32,
     _pad_end6: f32,
@@ -1446,6 +1477,15 @@ struct AdjustmentScales {
     glow: f32,
     halation: f32,
     flares: f32,
+
+    lens_blur_amount: f32,
+    lens_fstop: f32,
+    lens_radius: f32,
+    bokeh_shape: f32,
+    lens_anisotropy: f32,
+    lens_falloff_enabled: f32,
+    lens_falloff_amount: f32,
+    falloff_mode: f32,
 }
 
 const SCALES: AdjustmentScales = AdjustmentScales {
@@ -1495,6 +1535,15 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     glow: 100.0,
     halation: 100.0,
     flares: 100.0,
+
+    lens_blur_amount: 100.0,
+    lens_fstop: 100.0,
+    lens_radius: 50.0,
+    bokeh_shape: 3.0,
+    lens_anisotropy: 90.0,
+    lens_falloff_enabled: 1.0,
+    lens_falloff_amount: 100.0,
+    falloff_mode: 1.0,
 };
 
 fn parse_hsl_adjustments(js_hsl: &serde_json::Value) -> [HslColor; 8] {
@@ -2047,6 +2096,20 @@ fn get_global_adjustments_from_json(
             SCALES.sharpness_threshold,
             Some(10.0),
         ),
+
+        // Lens Blur
+        lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur_amount, None),
+        lens_fstop: get_val("effects", "lensFStop", SCALES.lens_fstop, Some(28.0)),
+        lens_radius: get_val("effects", "lensRadius", SCALES.lens_radius, None),
+        bokeh_shape: adj.get("bokehShape").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32,
+        lens_anisotropy: get_val("effects", "lensAnisotropy", SCALES.lens_anisotropy, None),
+        lens_falloff_enabled: if adj.get("lensFalloffEnabled").and_then(|v| v.as_bool()).unwrap_or(true) {
+            adj["lensFalloffEnabled"].as_f64().unwrap_or(1.0) as f32 / SCALES.lens_falloff_enabled
+        } else {
+            0.0
+        },
+        lens_falloff_amount: get_val("effects", "lensFalloffAmount", SCALES.lens_falloff_amount, None),
+        falloff_mode: if adj.get("falloffMode").and_then(|v| v.as_f64()).unwrap_or(0.0) > 0.5 { 1.0 } else { 0.0 },
     }
 }
 
@@ -2124,6 +2187,20 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         halation_amount: get_val("effects", "halationAmount", SCALES.halation),
         flare_amount: get_val("effects", "flareAmount", SCALES.flares),
         sharpness_threshold: get_val("details", "sharpnessThreshold", SCALES.sharpness_threshold),
+
+        // Lens Blur
+        lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur_amount),
+        lens_fstop: get_val("effects", "lensFStop", SCALES.lens_fstop, Some(28.0)),
+        lens_radius: get_val("effects", "lensRadius", SCALES.lens_radius),
+        bokeh_shape: if adj.get("bokehShape").and_then(|v| v.as_f64()).unwrap_or(0.0) > 1.5 {
+            if adj["bokehShape"].as_f64().unwrap_or(0.0) > 2.5 { 2.0 } else { 1.0 }
+        } else { 0.0 },
+        lens_anisotropy: get_val("effects", "lensAnisotropy", SCALES.lens_anisotropy),
+        lens_falloff_enabled: if adj.get("lensFalloffEnabled").and_then(|v| v.as_bool()).unwrap_or(true) {
+            1.0
+        } else { 0.0 },
+        lens_falloff_amount: get_val("effects", "lensFalloffAmount", SCALES.lens_falloff_amount),
+        falloff_mode: if adj.get("falloffMode").and_then(|v| v.as_f64()).unwrap_or(0.0) > 0.5 { 1.0 } else { 0.0 },
 
         _pad_cg1: 0.0,
         _pad_cg2: 0.0,

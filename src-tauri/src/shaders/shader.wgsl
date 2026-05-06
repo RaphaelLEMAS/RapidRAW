@@ -107,10 +107,20 @@ struct GlobalAdjustments {
     _pad_end3: f32,
     _pad_end4: f32,
 
-    glow_amount: f32,
+   glow_amount: f32,
     halation_amount: f32,
     flare_amount: f32,
     sharpness_threshold: f32,
+
+    // Lens Blur
+    lens_blur_amount: f32,
+    lens_fstop: f32,
+    lens_radius: f32,
+    bokeh_shape: u32,
+    lens_anisotropy: f32,
+    lens_falloff_enabled: u32,
+    lens_falloff_amount: f32,
+    falloff_mode: u32,
 }
 
 struct MaskAdjustments {
@@ -133,10 +143,20 @@ struct MaskAdjustments {
     dehaze: f32,
     structure: f32,
 
-    glow_amount: f32,
+   glow_amount: f32,
     halation_amount: f32,
     flare_amount: f32,
     sharpness_threshold: f32,
+
+    // Lens Blur
+    lens_blur_amount: f32,
+    lens_fstop: f32,
+    lens_radius: f32,
+    bokeh_shape: u32,
+    lens_anisotropy: f32,
+    lens_falloff_enabled: u32,
+    lens_falloff_amount: f32,
+    falloff_mode: u32,
 
     _pad_cg1: f32,
     _pad_cg2: f32,
@@ -1215,6 +1235,15 @@ fn get_mask_influence(mask_index: u32, coords: vec2<u32>) -> f32 {
     return textureLoad(mask_textures, vec2<i32>(coords), i32(mask_index), 0).r;
 }
 
+fn get_total_mask_influence(coords: vec2<u32>) -> f32 {
+    var total: f32 = 0.0;
+    for (var i = 0u; i < adjustments.mask_count; i = i + 1u) {
+        let influence = textureLoad(mask_textures, vec2<i32>(coords), i32(i), 0).r;
+        total += influence;
+    }
+    return clamp(total, 0.0, 1.0);
+}
+
 fn sample_lut_tetrahedral(uv: vec3<f32>) -> vec3<f32> {
     let dims = vec3<f32>(textureDimensions(lut_texture));
     let size = dims - vec3<f32>(1.0);
@@ -1410,6 +1439,110 @@ fn apply_halation(
     return contrast_reduced + halation_glow * amount * 2.5;
 }
 
+// Bokeh shape kernel weight evaluation
+fn bokeh_kernel_weight(nx: f32, ny: f32, shape_type: u32, anisotropy_angle: f32) -> f32 {
+    let angle = anisotropy_angle;
+    let c = cos(angle);
+    let s = sin(angle);
+    let rx = nx * c + ny * s;
+    let ry = -nx * s + ny * c;
+
+    let r = length(vec2<f32>(rx, ry));
+    if (r > 1.0) { return 0.0; }
+
+    match shape_type {
+        case 0u: // Circular
+            return 1.0;
+
+        case 1u: // Hexagonal - regular hexagon inscribed in unit circle
+            let h = min(
+                abs(rx),
+                min(
+                    (0.5 * sqrt(3.0) * rx + 0.5 * ny),
+                    (-0.5 * sqrt(3.0) * rx + 0.5 * ny)
+                )
+            );
+            return step(abs(h), 0.5774); // cos(pi/6) = 0.866; 0.866/sqrt(3)=0.5
+
+        case 2u: // Octagonal - regular octagon inscribed in unit circle
+            let ax = abs(rx);
+            let ay = abs(ry);
+            return step(min(ax, ay) + (sqrt(2.0) - 1.0) * max(ax, ay), 1.0);
+
+        default: // CustomSVG or fallback to circular
+            return 1.0;
+    }
+}
+
+// Apply lens blur using pre-blurred texture atlas with mask modulation
+fn apply_lens_blur(
+    color: vec3<f32>,
+    sharpness_blurred: vec3<f32>,
+    tonal_blurred: vec3<f32>,
+    clarity_blurred: vec3<f32>,
+    amount: f32,
+    mask_influence: f32,
+    lens_fstop: f32,
+    lens_radius: f32,
+    shape_type: u32,
+    anisotropy_angle: f32,
+    falloff_enabled: u32,
+    falloff_amount: f32,
+    falloff_mode_val: u32,
+    is_raw: u32,
+    img_dims: vec2<f32>,
+    coord_i: vec2<i32>
+) -> vec3<f32> {
+    if (amount <= 0.0 || mask_influence < 0.001) { return color; }
+
+    // Convert f-stop to bokeh radius using log scale mapping
+    let log_fstop = log(lens_fstop);
+    let min_log = log(1.2);
+    let max_log = log(22.0);
+    let normalized_fstop = clamp((log_fstop - min_log) / (max_log - min_log), 0.0, 1.0);
+
+    // Map: f/1.2 -> full lens_radius, f/22 -> minimal blur
+    let max_bokeh_px = max(lens_radius * 3.0, 4.0);
+    let bokeh_px = lerp(max_bokeh_px, 1.5, normalized_fstop) * (amount * 0.6 + 0.4);
+
+    if (bokeh_px < 1.0) { return color; }
+
+    // Blend between pre-blurred textures based on required bokeh size
+    let blend_tonal_clarity = clamp((bokeh_px - 3.0) / 5.0, 0.0, 1.0);
+    let blend_clarity_structure = clamp((bokeh_px - 20.0) / 40.0, 0.0, 1.0);
+
+    var final_blur: vec3<f32>;
+    if (blend_tonal_clarity < 0.5) {
+        final_blur = mix(sharpness_blurred, tonal_blurred, blend_tonal_clarity * 2.0);
+    } else {
+        final_blur = mix(tonal_blurred, clarity_blurred, min((blend_tonal_clarity - 0.5) * 2.0, 1.0));
+    }
+
+    if (blend_clarity_structure > 0.3) {
+        let structure_blend = clamp((blend_clarity_structure - 0.3) / 0.7, 0.0, 1.0);
+        final_blur = mix(final_blur, clarity_blurred, structure_blend * 0.5);
+    }
+
+    // Apply optical falloff (vignette-style light fall-off in blurred areas)
+    if (falloff_enabled == 1u && falloff_amount > 0.0) {
+        let coord_f = vec2<f32>(coord_i);
+        let center_dist = length((coord_f / img_dims) * 2.0 - 1.0);
+        var falloff: f32;
+        if (falloff_mode_val == 0u) {
+            // Linear falloff
+            falloff = 1.0 - center_dist * falloff_amount * 0.8;
+        } else {
+            // Exponential falloff (matches real lens physics better)
+            falloff = exp(-center_dist * falloff_amount * 2.5);
+        }
+        final_blur *= clamp(falloff, 0.0, 1.0);
+    }
+
+    // Mix sharp and blurred based on combined effect strength
+    let effective_strength = amount * mask_influence;
+    return mix(color, final_blur, smoothstep(0.0, 1.0, effective_strength));
+}
+
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let out_dims = vec2<u32>(textureDimensions(output_texture));
@@ -1460,6 +1593,16 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     var t_flare = adjustments.global.flare_amount;
     var t_sharpness = adjustments.global.sharpness;
 
+    // Lens Blur accumulators
+    var t_lens_blur = adjustments.global.lens_blur_amount;
+    var t_lens_fstop = adjustments.global.lens_fstop;
+    var t_lens_radius = adjustments.global.lens_radius;
+    var t_bokeh_shape: u32 = adjustments.global.bokeh_shape;
+    var t_lens_anisotropy = adjustments.global.lens_anisotropy * 0.0174533; // degrees to radians
+    var t_lens_falloff_enabled: u32 = adjustments.global.lens_falloff_enabled;
+    var t_lens_falloff_amount = adjustments.global.lens_falloff_amount;
+    var t_falloff_mode: u32 = adjustments.global.falloff_mode;
+
     var h0_h = adjustments.global.hsl[0].hue; var h0_s = adjustments.global.hsl[0].saturation; var h0_l = adjustments.global.hsl[0].luminance;
     var h1_h = adjustments.global.hsl[1].hue; var h1_s = adjustments.global.hsl[1].saturation; var h1_l = adjustments.global.hsl[1].luminance;
     var h2_h = adjustments.global.hsl[2].hue; var h2_s = adjustments.global.hsl[2].saturation; var h2_l = adjustments.global.hsl[2].luminance;
@@ -1496,6 +1639,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             t_glow += m.glow_amount * influence;
             t_halation += m.halation_amount * influence;
             t_flare += m.flare_amount * influence;
+
+            // Lens Blur mask accumulation (weighted addition)
+            t_lens_blur += m.lens_blur_amount * influence;
+            t_lens_fstop = mix(t_lens_fstop, m.lens_fstop, influence);
+            t_lens_radius = mix(t_lens_radius, m.lens_radius, influence);
 
             h0_h += m.hsl[0].hue * influence; h0_s += m.hsl[0].saturation * influence; h0_l += m.hsl[0].luminance * influence;
             h1_h += m.hsl[1].hue * influence; h1_s += m.hsl[1].saturation * influence; h1_l += m.hsl[1].luminance * influence;
@@ -1580,6 +1728,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         let protection = 1.0 - smoothstep(0.7, 1.8, perceptual_luma);
         processed_rgb += flare_color * t_flare * protection;
+    }
+
+    // Lens Blur - applied after creative overlays but before tonal adjustments
+    if (t_lens_blur > 0.0) {
+        let total_mask_inf = get_total_mask_influence(absolute_coord);
+        processed_rgb = apply_lens_blur(
+            processed_rgb, sharpness_blurred, tonal_blurred, clarity_blurred,
+            t_lens_blur, total_mask_inf,
+            t_lens_fstop, t_lens_radius, t_bokeh_shape,
+            t_lens_anisotropy, t_lens_falloff_enabled,
+            t_lens_falloff_amount, t_falloff_mode,
+            is_raw, full_dims, absolute_coord_i
+        );
     }
 
     var composite_rgb_linear = apply_dehaze(processed_rgb, structure_blurred, is_raw, t_dehaze);
