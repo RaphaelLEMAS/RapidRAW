@@ -223,9 +223,11 @@ const HSL_RANGES: array<HslRange, 8> = array<HslRange, 8>(
 @group(0) @binding(7) var tonal_blur_texture: texture_2d<f32>;
 @group(0) @binding(8) var clarity_blur_texture: texture_2d<f32>;
 @group(0) @binding(9) var structure_blur_texture: texture_2d<f32>;
+@group(0) @binding(10) var extra_blur_80_texture: texture_2d<f32>;
+@group(0) @binding(11) var extra_blur_160_texture: texture_2d<f32>;
 
-@group(0) @binding(10) var flare_texture: texture_2d<f32>;
-@group(0) @binding(11) var flare_sampler: sampler;
+@group(0) @binding(12) var flare_texture: texture_2d<f32>;
+@group(0) @binding(13) var flare_sampler: sampler;
 
 const LUMA_COEFF = vec3<f32>(0.2126, 0.7152, 0.0722);
 
@@ -1476,6 +1478,9 @@ fn apply_lens_blur(
     sharpness_blurred: vec3<f32>,
     tonal_blurred: vec3<f32>,
     clarity_blurred: vec3<f32>,
+    structure_blurred: vec3<f32>,
+    extra_blur_80: vec3<f32>,
+    extra_blur_160: vec3<f32>,
     amount: f32,
     mask_influence: f32,
     lens_fstop: f32,
@@ -1491,32 +1496,35 @@ fn apply_lens_blur(
 ) -> vec3<f32> {
     if (amount <= 0.0 || mask_influence < 0.001) { return color; }
 
-    // Convert f-stop to bokeh radius using log scale mapping
-    let log_fstop = log(lens_fstop);
-    let min_log = log(1.2);
-    let max_log = log(22.0);
-    let normalized_fstop = clamp((log_fstop - min_log) / (max_log - min_log), 0.0, 1.0);
+    // Convert f-stop slider value [1..100] to bokeh size factor using log scale
+    // Lower f-stop = larger aperture opening = more bokeh
+    let log_fstop = log(max(lens_fstop, 1.0));
+    let normalized_fstop = clamp((log_fstop - log(2.0)) / (log(100.0) - log(2.0)), 0.0, 1.0);
 
-    // Map: f/1.2 -> full lens_radius, f/22 -> minimal blur
-    let max_bokeh_px = max(lens_radius * 3.0, 4.0);
-    let bokeh_px = mix(max_bokeh_px, 1.5, normalized_fstop) * (amount * 0.6 + 0.4);
+    // Bokeh size is multiplicative: f-stop controls base bokeh AND radius scales it
+    let base_bokeh = mix(60.0, 2.5, normalized_fstop); // f/2 → 60px (huge), f/100 → 2.5px (tiny)
+    let bokeh_px = base_bokeh * (lens_radius / 50.0 + 0.5);
 
     if (bokeh_px < 1.0) { return color; }
 
-    // Blend between pre-blurred textures based on required bokeh size
-    let blend_tonal_clarity = clamp((bokeh_px - 3.0) / 5.0, 0.0, 1.0);
-    let blend_clarity_structure = clamp((bokeh_px - 20.0) / 40.0, 0.0, 1.0);
-
+    // Blend between 6 pre-blurred textures based on required bokeh size
     var final_blur: vec3<f32>;
-    if (blend_tonal_clarity < 0.5) {
-        final_blur = mix(sharpness_blurred, tonal_blurred, blend_tonal_clarity * 2.0);
-    } else {
-        final_blur = mix(tonal_blurred, clarity_blurred, min((blend_tonal_clarity - 0.5) * 2.0, 1.0));
-    }
+    let b1 = clamp((bokeh_px - 1.5) / 2.0, 0.0, 1.0);   // sharpness → tonal (1.5-3.5px)
+    let b2 = clamp((bokeh_px - 4.0) / 4.0, 0.0, 1.0);   // tonal → clarity (4-8px)
+    let b3 = clamp((bokeh_px - 12.0) / 28.0, 0.0, 1.0); // clarity → structure (12-40px)
+    let b4 = clamp((bokeh_px - 50.0) / 30.0, 0.0, 1.0); // structure → extra80 (50-80px)
+    let b5 = clamp((bokeh_px - 100.0) / 60.0, 0.0, 1.0);// extra80 → extra160 (100-160px)
 
-    if (blend_clarity_structure > 0.3) {
-        let structure_blend = clamp((blend_clarity_structure - 0.3) / 0.7, 0.0, 1.0);
-        final_blur = mix(final_blur, clarity_blurred, structure_blend * 0.5);
+    if (b1 < 0.5) {
+        final_blur = mix(sharpness_blurred, tonal_blurred, b1 * 2.0);
+    } else if (b2 < 0.5) {
+        final_blur = mix(tonal_blurred, clarity_blurred, (b2 - 0.5) * 2.0);
+    } else if (b3 < 0.5) {
+        final_blur = mix(clarity_blurred, structure_blurred, (b3 - 0.5) * 2.0);
+    } else if (b4 < 0.5) {
+        final_blur = mix(structure_blurred, extra_blur_80, (b4 - 0.5) * 2.0);
+    } else {
+        final_blur = mix(extra_blur_80, extra_blur_160, min((b5 - 0.5) * 2.0, 1.0));
     }
 
     // Apply optical falloff (vignette-style light fall-off in blurred areas)
@@ -1668,6 +1676,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let tonal_blurred = textureLoad(tonal_blur_texture, id.xy, 0).rgb;
     let clarity_blurred = textureLoad(clarity_blur_texture, id.xy, 0).rgb;
     let structure_blurred = textureLoad(structure_blur_texture, id.xy, 0).rgb;
+    let extra_80_blurred = textureLoad(extra_blur_80_texture, id.xy, 0).rgb;
+    let extra_160_blurred = textureLoad(extra_blur_160_texture, id.xy, 0).rgb;
 
     var locally_contrasted_rgb = initial_linear_rgb;
 
@@ -1730,7 +1740,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (t_lens_blur > 0.0) {
         let total_mask_inf = get_total_mask_influence(absolute_coord);
         processed_rgb = apply_lens_blur(
-            processed_rgb, sharpness_blurred, tonal_blurred, clarity_blurred,
+            processed_rgb, sharpness_blurred, tonal_blurred, clarity_blurred, structure_blurred, extra_80_blurred, extra_160_blurred,
             t_lens_blur, total_mask_inf,
             t_lens_fstop, t_lens_radius, t_bokeh_shape,
             t_lens_anisotropy, t_lens_falloff_enabled,

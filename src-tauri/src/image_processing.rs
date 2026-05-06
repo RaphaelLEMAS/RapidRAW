@@ -1526,8 +1526,8 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     flares: 100.0,
 
     lens_blur_amount: 100.0,
-    lens_fstop: 100.0,
-    lens_radius: 50.0,
+    lens_fstop: 1.0,
+    lens_radius: 1.0,
     lens_anisotropy: 90.0,
     #[allow(dead_code)]
     lens_falloff_enabled: 1.0,

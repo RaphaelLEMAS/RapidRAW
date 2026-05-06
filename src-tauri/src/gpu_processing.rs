@@ -537,6 +537,10 @@ pub struct GpuProcessor {
     pub tile_output_texture: wgpu::Texture,
     pub tile_output_texture_view: wgpu::TextureView,
     pub working_texture: wgpu::Texture,
+    pub extra_blur_80_texture: wgpu::Texture,
+    pub extra_blur_80_view: wgpu::TextureView,
+    pub extra_blur_160_texture: wgpu::Texture,
+    pub extra_blur_160_view: wgpu::TextureView,
     pub working_texture_view: wgpu::TextureView,
     pub output_texture: wgpu::Texture,
     pub output_texture_view: wgpu::TextureView,
@@ -876,6 +880,28 @@ impl GpuProcessor {
             binding: 9 + MAX_MASK_BINDINGS,
             visibility: wgpu::ShaderStages::COMPUTE,
             ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        });
+
+        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: 10 + MAX_MASK_BINDINGS,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        });
+
+        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: 11 + MAX_MASK_BINDINGS,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Texture {
                 sample_type: wgpu::TextureSampleType::Float { filterable: true },
                 view_dimension: wgpu::TextureViewDimension::D2,
                 multisampled: false,
@@ -883,7 +909,7 @@ impl GpuProcessor {
             count: None,
         });
         bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 10 + MAX_MASK_BINDINGS,
+            binding: 12 + MAX_MASK_BINDINGS,
             visibility: wgpu::ShaderStages::COMPUTE,
             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
             count: None,
@@ -987,6 +1013,18 @@ impl GpuProcessor {
         });
         let structure_blur_view = structure_blur_texture.create_view(&Default::default());
 
+        let extra_80_blur_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Extra Blur 80 Texture"),
+            ..reusable_texture_desc
+        });
+        let extra_80_blur_view = extra_80_blur_texture.create_view(&Default::default());
+
+        let extra_160_blur_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Extra Blur 160 Texture"),
+            ..reusable_texture_desc
+        });
+        let extra_160_blur_view = extra_160_blur_texture.create_view(&Default::default());
+
         let tile_output_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Tile Output Texture"),
             size: max_tile_size,
@@ -1057,6 +1095,10 @@ impl GpuProcessor {
             tonal_blur_view,
             clarity_blur_view,
             structure_blur_view,
+            extra_80_blur_texture,
+            extra_80_blur_view,
+            extra_160_blur_texture,
+            extra_160_blur_view,
             tile_output_texture,
             tile_output_texture_view,
             working_texture,
@@ -1396,6 +1438,8 @@ impl GpuProcessor {
                 let did_create_tonal_blur = run_blur(3.5, &self.tonal_blur_view);
                 let did_create_clarity_blur = run_blur(8.0, &self.clarity_blur_view);
                 let did_create_structure_blur = run_blur(40.0, &self.structure_blur_view);
+                let did_create_extra_80_blur = run_blur(80.0, &self.extra_80_blur_view);
+                let did_create_extra_160_blur = run_blur(160.0, &self.extra_160_blur_view);
 
                 let mut main_encoder = device.create_command_encoder(&Default::default());
 
@@ -1470,9 +1514,27 @@ impl GpuProcessor {
                     }),
                 });
 
-                let use_flare = adjustments.global.flare_amount > 0.0;
                 bind_group_entries.push(wgpu::BindGroupEntry {
                     binding: 9 + MAX_MASK_BINDINGS,
+                    resource: wgpu::BindingResource::TextureView(if did_create_extra_80_blur {
+                        &self.extra_80_blur_view
+                    } else {
+                        &self.dummy_blur_view
+                    }),
+                });
+
+                bind_group_entries.push(wgpu::BindGroupEntry {
+                    binding: 10 + MAX_MASK_BINDINGS,
+                    resource: wgpu::BindingResource::TextureView(if did_create_extra_160_blur {
+                        &self.extra_160_blur_view
+                    } else {
+                        &self.dummy_blur_view
+                    }),
+                });
+
+                let use_flare = adjustments.global.flare_amount > 0.0;
+                bind_group_entries.push(wgpu::BindGroupEntry {
+                    binding: 11 + MAX_MASK_BINDINGS,
                     resource: wgpu::BindingResource::TextureView(if use_flare {
                         &self.flare_ghosts_view
                     } else {
@@ -1480,7 +1542,7 @@ impl GpuProcessor {
                     }),
                 });
                 bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 10 + MAX_MASK_BINDINGS,
+                    binding: 12 + MAX_MASK_BINDINGS,
                     resource: wgpu::BindingResource::Sampler(&self.flare_sampler),
                 });
 
