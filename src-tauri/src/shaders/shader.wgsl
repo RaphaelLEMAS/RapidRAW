@@ -1450,27 +1450,23 @@ fn bokeh_kernel_weight(nx: f32, ny: f32, shape_type: u32, anisotropy_angle: f32)
     let r = length(vec2<f32>(rx, ry));
     if (r > 1.0) { return 0.0; }
 
-    match shape_type {
-        case 0u: // Circular
-            return 1.0;
-
-        case 1u: // Hexagonal - regular hexagon inscribed in unit circle
-            let h = min(
-                abs(rx),
-                min(
-                    (0.5 * sqrt(3.0) * rx + 0.5 * ny),
-                    (-0.5 * sqrt(3.0) * rx + 0.5 * ny)
-                )
-            );
-            return step(abs(h), 0.5774); // cos(pi/6) = 0.866; 0.866/sqrt(3)=0.5
-
-        case 2u: // Octagonal - regular octagon inscribed in unit circle
-            let ax = abs(rx);
-            let ay = abs(ry);
-            return step(min(ax, ay) + (sqrt(2.0) - 1.0) * max(ax, ay), 1.0);
-
-        default: // CustomSVG or fallback to circular
-            return 1.0;
+    if (shape_type == 0u) { // Circular
+        return 1.0;
+    } else if (shape_type == 1u) { // Hexagonal - regular hexagon inscribed in unit circle
+        let h = min(
+            abs(rx),
+            min(
+                (0.5 * sqrt(3.0) * rx + 0.5 * ny),
+                (-0.5 * sqrt(3.0) * rx + 0.5 * ny)
+            )
+        );
+        return step(abs(h), 0.5774); // cos(pi/6) = 0.866; 0.866/sqrt(3)=0.5
+    } else if (shape_type == 2u) { // Octagonal - regular octagon inscribed in unit circle
+        let ax = abs(rx);
+        let ay = abs(ry);
+        return step(min(ax, ay) + (sqrt(2.0) - 1.0) * max(ax, ay), 1.0);
+    } else { // CustomSVG or fallback to circular
+        return 1.0;
     }
 }
 

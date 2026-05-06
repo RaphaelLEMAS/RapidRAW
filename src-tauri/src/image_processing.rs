@@ -1471,11 +1471,10 @@ struct AdjustmentScales {
     lens_blur_amount: f32,
     lens_fstop: f32,
     lens_radius: f32,
-    bokeh_shape: f32,
     lens_anisotropy: f32,
+    #[allow(dead_code)]
     lens_falloff_enabled: f32,
     lens_falloff_amount: f32,
-    falloff_mode: f32,
 }
 
 const SCALES: AdjustmentScales = AdjustmentScales {
@@ -1529,11 +1528,10 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     lens_blur_amount: 100.0,
     lens_fstop: 100.0,
     lens_radius: 50.0,
-    bokeh_shape: 3.0,
     lens_anisotropy: 90.0,
+    #[allow(dead_code)]
     lens_falloff_enabled: 1.0,
     lens_falloff_amount: 100.0,
-    falloff_mode: 1.0,
 };
 
 fn parse_hsl_adjustments(js_hsl: &serde_json::Value) -> [HslColor; 8] {
