@@ -1499,7 +1499,7 @@ fn apply_lens_blur(
 
     // Map: f/1.2 -> full lens_radius, f/22 -> minimal blur
     let max_bokeh_px = max(lens_radius * 3.0, 4.0);
-    let bokeh_px = lerp(max_bokeh_px, 1.5, normalized_fstop) * (amount * 0.6 + 0.4);
+    let bokeh_px = mix(max_bokeh_px, 1.5, normalized_fstop) * (amount * 0.6 + 0.4);
 
     if (bokeh_px < 1.0) { return color; }
 
