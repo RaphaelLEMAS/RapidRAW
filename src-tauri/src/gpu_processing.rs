@@ -918,10 +918,10 @@ impl GpuProcessor {
             ga_size, ma_size, all_size
         );
 
-        // Assert that Rust struct matches WGSL shader layout (45392 bytes)
+        // Assert that Rust struct matches WGSL shader layout (45524 bytes)
         assert_eq!(
-            all_size, 45392,
-            "AllAdjustments size mismatch! Rust produces {} but WGSL shader expects 45392. \n\
+            all_size, 45524,
+            "AllAdjustments size mismatch! Rust produces {} but WGSL shader expects 45524. \n\
              Check field order/types in image_processing.rs against shaders/shader.wgsl",
             all_size
         );
