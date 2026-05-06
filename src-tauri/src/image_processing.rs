@@ -2147,7 +2147,7 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         flare_amount: get_val("effects", "flareAmount", SCALES.flares),
         lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur),
         lens_blur_radius: get_val("effects", "lensBlurRadius", SCALES.lens_blur),
-        bokeh_amount: get_val("effects", "bokehAmount", SCALES.bokeh, Some(0.0)),
+        bokeh_amount: get_val("effects", "bokehAmount", SCALES.bokeh),
         sharpness_threshold: get_val("details", "sharpnessThreshold", SCALES.sharpness_threshold),
 
         _pad_cg1: 0.0,
