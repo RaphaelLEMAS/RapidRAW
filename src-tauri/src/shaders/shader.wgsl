@@ -1471,7 +1471,7 @@ fn apply_lens_blur(
     let bokeh_weight_raw = blur_weight * highlight_boost;
 
     // Contrast boost for out-of-focus highlights — simulates defined bokeh edges
-    let bokeh_contrast = mix(0.94, 1.12, clamp(is_highlight * bokeh_amount * 1.5, 0.0, 1.0));
+    let bokeh_contrast = mix(0.94, 1.12, clamp(select(0.0, 1.0, is_highlight) * bokeh_amount * 1.5, 0.0, 1.0));
     let sharpened_blur = normalized_blur * bokeh_contrast;
 
     // Blend between Gaussian blend and bokeh-enhanced based on bokeh_amount + highlight presence
