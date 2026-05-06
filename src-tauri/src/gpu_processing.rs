@@ -1013,17 +1013,17 @@ impl GpuProcessor {
         });
         let structure_blur_view = structure_blur_texture.create_view(&Default::default());
 
-        let extra_80_blur_texture = device.create_texture(&wgpu::TextureDescriptor {
+        let extra_blur_80_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Extra Blur 80 Texture"),
             ..reusable_texture_desc
         });
-        let extra_80_blur_view = extra_80_blur_texture.create_view(&Default::default());
+        let extra_blur_80_view = extra_blur_80_texture.create_view(&Default::default());
 
-        let extra_160_blur_texture = device.create_texture(&wgpu::TextureDescriptor {
+        let extra_blur_160_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Extra Blur 160 Texture"),
             ..reusable_texture_desc
         });
-        let extra_160_blur_view = extra_160_blur_texture.create_view(&Default::default());
+        let extra_blur_160_view = extra_blur_160_texture.create_view(&Default::default());
 
         let tile_output_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Tile Output Texture"),
@@ -1095,10 +1095,10 @@ impl GpuProcessor {
             tonal_blur_view,
             clarity_blur_view,
             structure_blur_view,
-            extra_80_blur_texture,
-            extra_80_blur_view,
-            extra_160_blur_texture,
-            extra_160_blur_view,
+            extra_blur_80_texture,
+            extra_blur_80_view,
+            extra_blur_160_texture,
+            extra_blur_160_view,
             tile_output_texture,
             tile_output_texture_view,
             working_texture,
@@ -1438,8 +1438,8 @@ impl GpuProcessor {
                 let did_create_tonal_blur = run_blur(3.5, &self.tonal_blur_view);
                 let did_create_clarity_blur = run_blur(8.0, &self.clarity_blur_view);
                 let did_create_structure_blur = run_blur(40.0, &self.structure_blur_view);
-                let did_create_extra_80_blur = run_blur(80.0, &self.extra_80_blur_view);
-                let did_create_extra_160_blur = run_blur(160.0, &self.extra_160_blur_view);
+                let did_create_extra_blur_80 = run_blur(80.0, &self.extra_blur_80_view);
+                let did_create_extra_blur_160 = run_blur(160.0, &self.extra_blur_160_view);
 
                 let mut main_encoder = device.create_command_encoder(&Default::default());
 
@@ -1516,8 +1516,8 @@ impl GpuProcessor {
 
                 bind_group_entries.push(wgpu::BindGroupEntry {
                     binding: 9 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::TextureView(if did_create_extra_80_blur {
-                        &self.extra_80_blur_view
+                    resource: wgpu::BindingResource::TextureView(if did_create_extra_blur_80 {
+                        &self.extra_blur_80_view
                     } else {
                         &self.dummy_blur_view
                     }),
@@ -1525,8 +1525,8 @@ impl GpuProcessor {
 
                 bind_group_entries.push(wgpu::BindGroupEntry {
                     binding: 10 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::TextureView(if did_create_extra_160_blur {
-                        &self.extra_160_blur_view
+                    resource: wgpu::BindingResource::TextureView(if did_create_extra_blur_160 {
+                        &self.extra_blur_160_view
                     } else {
                         &self.dummy_blur_view
                     }),
