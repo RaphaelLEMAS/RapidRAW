@@ -1460,7 +1460,7 @@ fn apply_lens_blur(
 
     // Detect bright areas that benefit from bokeh character
     let is_highlight = color_luma > 0.55 && blurred_luma < color_luma * 0.82;
-    let highlight_boost = if (is_highlight) { 1.6 } else { 1.0 };
+    let highlight_boost = select(1.0, 1.6, is_highlight);
 
     // Bokeh intensity curve — flatter at high bokeh values for more visible effect
     let falloff_exp = mix(2.5, 0.45, clamp(bokeh_amount, 0.0, 1.0));
