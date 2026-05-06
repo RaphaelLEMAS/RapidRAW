@@ -2087,7 +2087,7 @@ fn get_global_adjustments_from_json(
 
         // Lens Blur
         lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur_amount, None),
-        lens_fstop: get_val("effects", "lensFStop", SCALES.lens_fstop, Some(28.0)),
+        lens_fstop: get_val("effects", "lensFStop", SCALES.lens_fstop, Some(60.0)),
         lens_radius: get_val("effects", "lensRadius", SCALES.lens_radius, None),
         bokeh_shape: js_adjustments.get("bokehShape").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
         lens_anisotropy: get_val("effects", "lensAnisotropy", SCALES.lens_anisotropy, None),

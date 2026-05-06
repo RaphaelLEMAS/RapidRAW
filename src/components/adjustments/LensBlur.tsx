@@ -22,10 +22,35 @@ const FALLOFF_MODES = [
   { label: 'Exponential', value: 1 },
 ];
 
+// Standard photographic full f-stops (√2 geometric progression from f/1.0 to f/32)
+const STANDARD_FSTOPS = [1.0, 1.4, 2.0, 2.8, 4.0, 5.6, 8.0, 11, 16, 22, 32];
+
+// DISCRETE_STEPS mode: slider value is an INDEX into STANDARD_FSTOPS
+const FSTOP_SLIDER_MAX = (STANDARD_FSTOPS.length - 1) * 10; // 100 (= index 10, f/32)
+const FSTOP_SLIDER_MIN = 0; // index 0, f/1.0
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+// Map slider numeric value (0..100) to discrete f-stop via √2 progression
+function sliderToFStop(sliderValue: number): number {
+  const clamped = clamp(sliderValue, FSTOP_SLIDER_MIN, FSTOP_SLIDER_MAX);
+  // Each full stop = 10 slider units; index = floor(clamped / 10)
+  const index = Math.round(clamped / 10);
+  return STANDARD_FSTOPS[index];
+}
+
+// Display label from stored f-stop value (reads the standard array directly)
 function formatFStop(fstop: number): string {
-  const stops = [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.5, 2.8, 3.2, 3.5, 4.0, 4.5, 5.0, 5.6, 6.3, 7.1, 8.0, 9.0, 10.0, 11.0, 13.0, 14.0, 16.0, 18.0, 20.0, 22.0];
-  let closest = stops[5]; // f/2.8 default
-  for (const s of stops) {
+  // Find which standard stop this value corresponds to and display it cleanly
+  const index = STANDARD_FSTOPS.indexOf(Math.round(fstop * 10) / 10);
+  if (index !== -1) {
+    return `f/${STANDARD_FSTOPS[index]}`;
+  }
+  // Fallback: round to nearest standard stop
+  let closest = STANDARD_FSTOPS[0];
+  for (const s of STANDARD_FSTOPS) {
     if (Math.abs(s - fstop) < Math.abs(closest - fstop)) {
       closest = s;
     }
@@ -49,14 +74,19 @@ export default function LensBlur({ adjustments, setAdjustments }: LensBlurProps)
     }
   };
 
-  const lensBlurAmount = adjustments.lensBlurAmount || 0;
-  const lensFStop = adjustments.lensFStop || 28.0;
-  const lensRadius = adjustments.lensRadius || 50.0;
+  // Aperture stored as f-stop index * 10 for sub-step granularity in slider
+  const lensFStopIndex = adjustments.lensFStop || 6; // default index=6 → f/5.6
+  const lensFStopValue = sliderToFStop(lensFStopIndex);
+
   const bokehShape = adjustments.bokehShape || 0;
   const lensAnisotropy = adjustments.lensAnisotropy || 0;
   const lensFalloffEnabled = (adjustments.lensFalloffEnabled ?? 100) > 50;
   const lensFalloffAmount = adjustments.lensFalloffAmount || 30;
   const falloffMode = adjustments.falloffMode || 0;
+
+  // Lens blur amount and radius (retrieved after bokehShape for readability)
+  const lensBlurAmount = adjustments.lensBlurAmount || 0;
+  const lensRadius = adjustments.lensRadius || 50.0;
 
   const isCircular = bokehShape === 0;
 
@@ -73,19 +103,25 @@ export default function LensBlur({ adjustments, setAdjustments }: LensBlurProps)
       />
 
       <Slider
-        label={`Aperture (F): ${formatFStop(lensFStop)}`}
-        max={100}
-        min={0}
-        onChange={(e: any) => handleLensBlurChange(CreativeAdjustment.LensFStop, parseFloat(e.target.value))}
-        step={1}
-        value={lensFStop}
+        label={`Aperture (F): ${formatFStop(lensFStopValue)}`}
+        max={FSTOP_SLIDER_MAX}
+        min={FSTOP_SLIDER_MIN}
+        step={10}
+        onChange={(e: any) => {
+          const raw = clamp(parseFloat(e.target.value), FSTOP_SLIDER_MIN, FSTOP_SLIDER_MAX);
+          handleLensBlurChange(CreativeAdjustment.LensFStop, raw);
+        }}
+        value={lensFStopIndex}
       />
 
       <Slider
         label="Lens Radius"
         max={50}
         min={0}
-        onChange={(e: any) => handleLensBlurChange(CreativeAdjustment.LensRadius, parseInt(e.target.value, 10))}
+        onChange={(e: any) => {
+          const clamped = clamp(parseInt(e.target.value, 10), 0, 50);
+          handleLensBlurChange(CreativeAdjustment.LensRadius, clamped);
+        }}
         step={1}
         value={lensRadius}
         suffix="px"

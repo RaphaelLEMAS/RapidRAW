@@ -1496,14 +1496,62 @@ fn apply_lens_blur(
 ) -> vec3<f32> {
     if (amount <= 0.0 || mask_influence < 0.001) { return color; }
 
-    // Convert f-stop slider value [1..100] to bokeh size factor using log scale
-    // Lower f-stop = larger aperture opening = more bokeh
-    let log_fstop = log(max(lens_fstop, 1.0));
-    let normalized_fstop = clamp((log_fstop - log(2.0)) / (log(100.0) - log(2.0)), 0.0, 1.0);
+    // Convert f-stop slider index [0..100] to actual f-stop via √2 progression:
+    // Each full stop = 10 units; f/1=index 0 → f/32=index 10
+    let slider_idx = clamp(lens_fstop / 10.0, 0.0, 10.0);
+    let actual_fstop = select(
+        32.0,  // idx=10
+        select(
+            22.0,  // idx=9
+            select(
+                16.0,  // idx=8
+                select(
+                    11.0,  // idx=7
+                    select(
+                        8.0,   // idx=6
+                        select(
+                            5.6,   // idx=5
+                            select(
+                                4.0,   // idx=4
+                                select(
+                                    2.8,   // idx=3
+                                    select(
+                                        2.0,   // idx=2
+                                        select(
+                                            1.4,   // idx=1
+                                            1.0,   // idx=0
+                                            slider_idx < 1.5
+                                        ),
+                                        slider_idx < 2.5
+                                    ),
+                                    slider_idx < 3.5
+                                ),
+                                slider_idx < 4.5
+                            ),
+                            slider_idx < 5.5
+                        ),
+                        slider_idx < 6.5
+                    ),
+                    slider_idx < 7.5
+                ),
+                slider_idx < 8.5
+            ),
+            slider_idx < 9.5
+        ),
+        slider_idx >= 9.5
+    );
 
-    // Bokeh size is multiplicative: f-stop controls base bokeh AND radius scales it
-    let base_bokeh = mix(60.0, 2.5, normalized_fstop); // f/2 → 60px (huge), f/100 → 2.5px (tiny)
-    let bokeh_px = base_bokeh * (lens_radius / 50.0 + 0.5);
+    // Log-normalize the actual f-stop over [f/1 .. f/32] range for bokeh sizing
+    let log_fstop = log(max(actual_fstop, 1.0));
+    let normalized_fstop = clamp((log_fstop - log(1.0)) / (log(32.0) - log(1.0)), 0.0, 1.0);
+
+    // Bokeh size: f-stop controls base bokeh magnitude
+    let base_bokeh = mix(60.0, 2.5, normalized_fstop); // f/1 → 60px (huge), f/32 → 2.5px (tiny)
+
+    // Linear radius mapping: each slider unit in [0..50] adds fixed delta to bokeh_px
+    let min_bokeh = 2.5;     // minimum bokeh at radius=0
+    let max_radius = 50.0;
+    let bokeh_px = mix(min_bokeh, base_bokeh, clamp(lens_radius / max_radius, 0.0, 1.0));
 
     if (bokeh_px < 1.0) { return color; }
 
