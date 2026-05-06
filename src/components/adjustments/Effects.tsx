@@ -84,6 +84,100 @@ export default function EffectsPanel({
         )}
       </div>
 
+      <div className="p-2 bg-bg-tertiary rounded-md">
+        <Text variant={TextVariants.heading} className="mb-2">
+          Lens Blur
+        </Text>
+
+        <Slider
+          label="Amount"
+          max={100}
+          min={0}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.LensBlurAmount, e.target.value)}
+          step={1}
+          value={adjustments.lensBlurAmount}
+          onDragStateChange={onDragStateChange}
+        />
+
+        <Slider
+          label="Size"
+          defaultValue={50}
+          max={100}
+          min={1}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.LensBlurSize, e.target.value)}
+          step={1}
+          value={adjustments.lensBlurSize}
+          onDragStateChange={onDragStateChange}
+          fillOrigin="min"
+        />
+
+        <Slider
+          label="Aperture"
+          defaultValue={50}
+          max={100}
+          min={0}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.LensBlurAperture, e.target.value)}
+          step={1}
+          value={adjustments.lensBlurAperture}
+          onDragStateChange={onDragStateChange}
+          fillOrigin="min"
+        />
+
+        <Slider
+          label="Bokeh Shape"
+          defaultValue={6}
+          max={12}
+          min={3}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.LensBlurBokehShape, e.target.value)}
+          step={1}
+          value={adjustments.lensBlurBokehShape}
+          onDragStateChange={onDragStateChange}
+          fillOrigin="min"
+        />
+
+        <Slider
+          label="Bokeh Intensity"
+          defaultValue={50}
+          max={100}
+          min={0}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.LensBlurBokehIntensity, e.target.value)}
+          step={1}
+          value={adjustments.lensBlurBokehIntensity}
+          onDragStateChange={onDragStateChange}
+          fillOrigin="min"
+        />
+
+        <Slider
+          label="Highlight Boost"
+          max={100}
+          min={0}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.LensBlurHighlightBoost, e.target.value)}
+          step={1}
+          value={adjustments.lensBlurHighlightBoost}
+          onDragStateChange={onDragStateChange}
+        />
+
+        <Slider
+          label="Fringing"
+          max={100}
+          min={0}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.LensBlurFringeAmount, e.target.value)}
+          step={1}
+          value={adjustments.lensBlurFringeAmount}
+          onDragStateChange={onDragStateChange}
+        />
+
+        <Slider
+          label="Swirl"
+          max={100}
+          min={-100}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.LensBlurSwirlAmount, e.target.value)}
+          step={1}
+          value={adjustments.lensBlurSwirlAmount}
+          onDragStateChange={onDragStateChange}
+        />
+      </div>
+
       {!isForMask && (
         <div className="space-y-4">
           <div className="p-2 bg-bg-tertiary rounded-md">

@@ -78,10 +78,10 @@ use crate::image_loader::{
     composite_patches_on_image, load_and_composite, load_base_image_from_bytes,
 };
 use crate::image_processing::{
-    Crop, GeometryParams, RenderRequest, apply_coarse_rotation, apply_cpu_default_raw_processing,
-    apply_flip, apply_geometry_warp, apply_linear_to_srgb, apply_srgb_to_linear,
-    downscale_f32_image, get_all_adjustments_from_json, get_or_init_gpu_context,
-    process_and_get_dynamic_image, resolve_tonemapper_override,
+    Crop, GeometryParams, LensBlurParams, RenderRequest, apply_coarse_rotation,
+    apply_cpu_default_raw_processing, apply_flip, apply_geometry_warp, apply_linear_to_srgb,
+    apply_srgb_to_linear, downscale_f32_image, get_all_adjustments_from_json,
+    get_or_init_gpu_context, process_and_get_dynamic_image, resolve_tonemapper_override,
     resolve_tonemapper_override_from_handle, warp_image_geometry,
 };
 use crate::lut_processing::Lut;
@@ -326,6 +326,102 @@ async fn update_wgpu_transform(
     Ok(())
 }
 
+fn compute_lens_blur_params(
+    mask_definitions: &[MaskDefinition],
+    mask_bitmaps: &[ImageBuffer<Luma<u8>, Vec<u8>>],
+) -> Option<LensBlurParams> {
+    if mask_bitmaps.is_empty() {
+        return None;
+    }
+
+    // Find the first mask with lens blur active
+    for def in mask_definitions.iter() {
+        if !def.visible {
+            continue;
+        }
+        let adj = &def.adjustments;
+        let amount = adj["lensBlurAmount"].as_f64().unwrap_or(0.0) as f32;
+        if amount > 0.0 {
+            let size = adj["lensBlurSize"].as_f64().unwrap_or(50.0) as f32 / 100.0;
+            let aperture = adj["lensBlurAperture"].as_f64().unwrap_or(50.0) as f32 / 100.0;
+            let bokeh_shape = adj["lensBlurBokehShape"].as_u64().unwrap_or(6) as u32;
+            let bokeh_intensity = adj["lensBlurBokehIntensity"].as_f64().unwrap_or(50.0) as f32 / 100.0;
+            let fringe_amount = adj["lensBlurFringeAmount"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+            let highlight_boost = adj["lensBlurHighlightBoost"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+            let swirl_amount = adj["lensBlurSwirlAmount"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+
+            return Some(LensBlurParams {
+                amount: amount / 100.0,
+                size,
+                aperture,
+                bokeh_shape,
+                bokeh_intensity,
+                highlight_boost,
+                fringe_amount,
+                swirl_amount,
+                width: 0,  // Set by GPU processor
+                height: 0, // Set by GPU processor
+                tile_offset_x: 0,
+                tile_offset_y: 0,
+            });
+        }
+    }
+    None
+}
+
+fn compute_lens_blur_mask(
+    mask_definitions: &[MaskDefinition],
+    mask_bitmaps: &[ImageBuffer<Luma<u8>, Vec<u8>>],
+) -> Option<ImageBuffer<Luma<u8>, Vec<u8>>> {
+    if mask_bitmaps.is_empty() {
+        return None;
+    }
+
+    let mut has_lens_blur = false;
+    let mut composite: Option<Vec<f32>> = None;
+    let mut dims = (0u32, 0u32);
+
+    for (i, def) in mask_definitions.iter().enumerate() {
+        if !def.visible || i >= mask_bitmaps.len() {
+            continue;
+        }
+        let adj = &def.adjustments;
+        let amount = adj["lensBlurAmount"].as_f64().unwrap_or(0.0) as f32;
+        if amount <= 0.0 {
+            continue;
+        }
+
+        has_lens_blur = true;
+        let bitmap = &mask_bitmaps[i];
+        let (w, h) = bitmap.dimensions();
+        dims = (w, h);
+
+        let strength = (amount / 100.0) * (def.opacity / 100.0);
+
+        if composite.is_none() {
+            composite = Some(vec![0.0f32; (w * h) as usize]);
+        }
+
+        if let Some(ref mut comp) = composite {
+            for (j, pixel) in bitmap.as_raw().iter().enumerate() {
+                let mask_val = *pixel as f32 / 255.0;
+                let contribution = mask_val * strength;
+                comp[j] = (comp[j] + contribution).min(1.0);
+            }
+        }
+    }
+
+    if !has_lens_blur {
+        return None;
+    }
+
+    composite.map(|comp| {
+        let pixels: Vec<u8> = comp.iter().map(|v| (*v * 255.0).round() as u8).collect();
+        ImageBuffer::<Luma<u8>, Vec<u8>>::from_raw(dims.0, dims.1, pixels)
+            .unwrap_or_else(|| ImageBuffer::new(dims.0, dims.1))
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn process_preview_job(
     app_handle: &tauri::AppHandle,
@@ -504,6 +600,9 @@ fn process_preview_job(
         None
     };
 
+    let lens_blur_params = compute_lens_blur_params(&mask_definitions, &mask_bitmaps);
+    let lens_blur_mask_buf = compute_lens_blur_mask(&mask_definitions, &mask_bitmaps);
+
     let final_processed_image_result =
         crate::image_processing::process_and_get_dynamic_image_with_analytics(
             &context,
@@ -515,6 +614,8 @@ fn process_preview_job(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: pixel_roi,
+                lens_blur_params,
+                lens_blur_mask: lens_blur_mask_buf.as_ref(),
             },
             "apply_adjustments",
             use_wgpu_renderer,
@@ -827,6 +928,8 @@ fn generate_uncropped_preview(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: None,
+                lens_blur_params: None,
+                lens_blur_mask: None,
             },
             "generate_uncropped_preview",
         ) {
@@ -992,6 +1095,8 @@ async fn preview_geometry_transform(
                     mask_bitmaps: &mask_bitmaps,
                     lut,
                     roi: None,
+                    lens_blur_params: None,
+                    lens_blur_mask: None,
                 },
                 "preview_geometry_transform_base_gen",
             )?;
@@ -1174,6 +1279,8 @@ fn generate_preset_preview(
             mask_bitmaps: &mask_bitmaps,
             lut,
             roi: None,
+            lens_blur_params: None,
+            lens_blur_mask: None,
         },
         "generate_preset_preview",
     )?;
@@ -1328,6 +1435,8 @@ async fn generate_all_community_previews(
                     mask_bitmaps: &mask_bitmaps,
                     lut,
                     roi: None,
+                    lens_blur_params: None,
+                    lens_blur_mask: None,
                 },
                 "generate_all_community_previews",
             )?;
@@ -1675,6 +1784,8 @@ fn generate_preview_for_path(
             mask_bitmaps: &mask_bitmaps,
             lut,
             roi: None,
+            lens_blur_params: None,
+            lens_blur_mask: None,
         },
         "generate_preview_for_path",
     )?;

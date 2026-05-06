@@ -14,7 +14,7 @@ use std::f32::consts::PI;
 use std::sync::Arc;
 
 pub use crate::gpu_processing::{
-    RenderRequest, get_or_init_gpu_context, process_and_get_dynamic_image,
+    LensBlurParams, RenderRequest, get_or_init_gpu_context, process_and_get_dynamic_image,
     process_and_get_dynamic_image_with_analytics,
 };
 use crate::{AppState, mask_generation::MaskDefinition};
@@ -1359,6 +1359,15 @@ pub struct MaskAdjustments {
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
 
+    pub lens_blur_amount: f32,
+    pub lens_blur_aperture: f32,
+    pub lens_blur_size: f32,
+    pub lens_blur_bokeh_intensity: f32,
+    pub lens_blur_bokeh_shape: u32,
+    pub lens_blur_fringe_amount: f32,
+    pub lens_blur_highlight_boost: f32,
+    pub lens_blur_swirl_amount: f32,
+
     _pad_cg1: f32,
     _pad_cg2: f32,
     _pad_cg3: f32,
@@ -2124,6 +2133,15 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         halation_amount: get_val("effects", "halationAmount", SCALES.halation),
         flare_amount: get_val("effects", "flareAmount", SCALES.flares),
         sharpness_threshold: get_val("details", "sharpnessThreshold", SCALES.sharpness_threshold),
+
+        lens_blur_amount: get_val("effects", "lensBlurAmount", 100.0),
+        lens_blur_aperture: get_val("effects", "lensBlurAperture", 100.0),
+        lens_blur_size: get_val("effects", "lensBlurSize", 100.0),
+        lens_blur_bokeh_intensity: get_val("effects", "lensBlurBokehIntensity", 100.0),
+        lens_blur_bokeh_shape: adj["lensBlurBokehShape"].as_u64().unwrap_or(6) as u32,
+        lens_blur_fringe_amount: get_val("effects", "lensBlurFringeAmount", 100.0),
+        lens_blur_highlight_boost: get_val("effects", "lensBlurHighlightBoost", 100.0),
+        lens_blur_swirl_amount: get_val("effects", "lensBlurSwirlAmount", 100.0),
 
         _pad_cg1: 0.0,
         _pad_cg2: 0.0,

@@ -90,6 +90,14 @@ export enum CreativeAdjustment {
   GlowAmount = 'glowAmount',
   HalationAmount = 'halationAmount',
   FlareAmount = 'flareAmount',
+  LensBlurAmount = 'lensBlurAmount',
+  LensBlurAperture = 'lensBlurAperture',
+  LensBlurSize = 'lensBlurSize',
+  LensBlurBokehIntensity = 'lensBlurBokehIntensity',
+  LensBlurBokehShape = 'lensBlurBokehShape',
+  LensBlurFringeAmount = 'lensBlurFringeAmount',
+  LensBlurHighlightBoost = 'lensBlurHighlightBoost',
+  LensBlurSwirlAmount = 'lensBlurSwirlAmount',
 }
 
 export enum TransformAdjustment {
@@ -176,6 +184,14 @@ export interface Adjustments {
   halationAmount: number;
   highlights: number;
   hsl: Hsl;
+  lensBlurAmount: number;
+  lensBlurAperture: number;
+  lensBlurSize: number;
+  lensBlurBokehIntensity: number;
+  lensBlurBokehShape: number;
+  lensBlurFringeAmount: number;
+  lensBlurHighlightBoost: number;
+  lensBlurSwirlAmount: number;
   lensDistortionAmount: number;
   lensVignetteAmount: number;
   lensTcaAmount: number;
@@ -307,6 +323,14 @@ export interface MaskAdjustments {
   highlights: number;
   hsl: Hsl;
   id?: string;
+  lensBlurAmount: number;
+  lensBlurAperture: number;
+  lensBlurSize: number;
+  lensBlurBokehIntensity: number;
+  lensBlurBokehShape: number;
+  lensBlurFringeAmount: number;
+  lensBlurHighlightBoost: number;
+  lensBlurSwirlAmount: number;
   lumaNoiseReduction: number;
   saturation: number;
   sectionVisibility: SectionVisibility;
@@ -442,6 +466,14 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
     reds: { hue: 0, saturation: 0, luminance: 0 },
     yellows: { hue: 0, saturation: 0, luminance: 0 },
   },
+  lensBlurAmount: 0,
+  lensBlurAperture: 50,
+  lensBlurSize: 50,
+  lensBlurBokehIntensity: 50,
+  lensBlurBokehShape: 6,
+  lensBlurFringeAmount: 0,
+  lensBlurHighlightBoost: 0,
+  lensBlurSwirlAmount: 0,
   lumaNoiseReduction: 0,
   saturation: 0,
   sectionVisibility: {
@@ -509,6 +541,14 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     reds: { hue: 0, saturation: 0, luminance: 0 },
     yellows: { hue: 0, saturation: 0, luminance: 0 },
   },
+  lensBlurAmount: 0,
+  lensBlurAperture: 50,
+  lensBlurSize: 50,
+  lensBlurBokehIntensity: 50,
+  lensBlurBokehShape: 6,
+  lensBlurFringeAmount: 0,
+  lensBlurHighlightBoost: 0,
+  lensBlurSwirlAmount: 0,
   lensDistortionAmount: 100,
   lensVignetteAmount: 100,
   lensTcaAmount: 100,
@@ -614,6 +654,18 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
         flareAmount: containerAdjustments.flareAmount ?? INITIAL_MASK_ADJUSTMENTS.flareAmount,
         glowAmount: containerAdjustments.glowAmount ?? INITIAL_MASK_ADJUSTMENTS.glowAmount,
         halationAmount: containerAdjustments.halationAmount ?? INITIAL_MASK_ADJUSTMENTS.halationAmount,
+        lensBlurAmount: containerAdjustments.lensBlurAmount ?? INITIAL_MASK_ADJUSTMENTS.lensBlurAmount,
+        lensBlurAperture: containerAdjustments.lensBlurAperture ?? INITIAL_MASK_ADJUSTMENTS.lensBlurAperture,
+        lensBlurSize: containerAdjustments.lensBlurSize ?? INITIAL_MASK_ADJUSTMENTS.lensBlurSize,
+        lensBlurBokehIntensity:
+          containerAdjustments.lensBlurBokehIntensity ?? INITIAL_MASK_ADJUSTMENTS.lensBlurBokehIntensity,
+        lensBlurBokehShape: containerAdjustments.lensBlurBokehShape ?? INITIAL_MASK_ADJUSTMENTS.lensBlurBokehShape,
+        lensBlurFringeAmount:
+          containerAdjustments.lensBlurFringeAmount ?? INITIAL_MASK_ADJUSTMENTS.lensBlurFringeAmount,
+        lensBlurHighlightBoost:
+          containerAdjustments.lensBlurHighlightBoost ?? INITIAL_MASK_ADJUSTMENTS.lensBlurHighlightBoost,
+        lensBlurSwirlAmount:
+          containerAdjustments.lensBlurSwirlAmount ?? INITIAL_MASK_ADJUSTMENTS.lensBlurSwirlAmount,
         colorGrading: { ...INITIAL_MASK_ADJUSTMENTS.colorGrading, ...(containerAdjustments.colorGrading || {}) },
         hsl: { ...INITIAL_MASK_ADJUSTMENTS.hsl, ...(containerAdjustments.hsl || {}) },
         curves: containerAdjustments.curves ? deepCloneCurves(containerAdjustments.curves) : getDefaultCurves(),
@@ -744,6 +796,19 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
       keys: [CreativeAdjustment.GlowAmount, CreativeAdjustment.HalationAmount, CreativeAdjustment.FlareAmount],
     },
     {
+      label: 'Lens Blur',
+      keys: [
+        CreativeAdjustment.LensBlurAmount,
+        CreativeAdjustment.LensBlurAperture,
+        CreativeAdjustment.LensBlurSize,
+        CreativeAdjustment.LensBlurBokehIntensity,
+        CreativeAdjustment.LensBlurBokehShape,
+        CreativeAdjustment.LensBlurFringeAmount,
+        CreativeAdjustment.LensBlurHighlightBoost,
+        CreativeAdjustment.LensBlurSwirlAmount,
+      ],
+    },
+    {
       label: 'LUT',
       keys: [Effect.LutIntensity, Effect.LutName, Effect.LutPath, Effect.LutSize, Effect.LutData],
     },
@@ -812,6 +877,14 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     CreativeAdjustment.GlowAmount,
     CreativeAdjustment.HalationAmount,
     CreativeAdjustment.FlareAmount,
+    CreativeAdjustment.LensBlurAmount,
+    CreativeAdjustment.LensBlurAperture,
+    CreativeAdjustment.LensBlurSize,
+    CreativeAdjustment.LensBlurBokehIntensity,
+    CreativeAdjustment.LensBlurBokehShape,
+    CreativeAdjustment.LensBlurFringeAmount,
+    CreativeAdjustment.LensBlurHighlightBoost,
+    CreativeAdjustment.LensBlurSwirlAmount,
     Effect.GrainAmount,
     Effect.GrainRoughness,
     Effect.GrainSize,

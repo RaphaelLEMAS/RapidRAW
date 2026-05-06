@@ -265,6 +265,8 @@ fn process_image_for_export_pipeline(
             mask_bitmaps: &mask_bitmaps,
             lut,
             roi: None,
+            lens_blur_params: None,
+            lens_blur_mask: None,
         },
         debug_tag,
     )
@@ -535,6 +537,8 @@ fn export_masks_for_image(
                     mask_bitmaps: &single_bitmaps,
                     lut: lut.clone(),
                     roi: None,
+                    lens_blur_params: None,
+                    lens_blur_mask: None,
                 },
                 "export_mask_image",
             )?;
@@ -628,6 +632,8 @@ fn export_adjustments_as_lut(
             mask_bitmaps: &[],
             lut,
             roi: None,
+            lens_blur_params: None,
+            lens_blur_mask: None,
         },
         "export_lut",
     )?;
@@ -1195,6 +1201,8 @@ pub async fn estimate_export_size(
             mask_bitmaps: &mask_bitmaps,
             lut,
             roi: None,
+            lens_blur_params: None,
+            lens_blur_mask: None,
         },
         "estimate_export_size",
     )?;
@@ -1382,6 +1390,8 @@ pub async fn estimate_batch_export_size(
             mask_bitmaps: &mask_bitmaps,
             lut,
             roi: None,
+            lens_blur_params: None,
+            lens_blur_mask: None,
         },
         "estimate_batch_export_size",
     )?;

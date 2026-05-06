@@ -978,6 +978,8 @@ pub fn generate_thumbnail_data(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: None,
+                lens_blur_params: None,
+                lens_blur_mask: None,
             },
             "generate_thumbnail_data",
         ) {

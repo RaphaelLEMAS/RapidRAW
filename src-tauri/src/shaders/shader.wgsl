@@ -138,6 +138,15 @@ struct MaskAdjustments {
     flare_amount: f32,
     sharpness_threshold: f32,
 
+    lens_blur_amount: f32,
+    lens_blur_aperture: f32,
+    lens_blur_size: f32,
+    lens_blur_bokeh_intensity: f32,
+    lens_blur_bokeh_shape: u32,
+    lens_blur_fringe_amount: f32,
+    lens_blur_highlight_boost: f32,
+    lens_blur_swirl_amount: f32,
+
     _pad_cg1: f32,
     _pad_cg2: f32,
     _pad_cg3: f32,

@@ -26,6 +26,8 @@ pub struct RenderRequest<'a> {
     pub mask_bitmaps: &'a [ImageBuffer<Luma<u8>, Vec<u8>>],
     pub lut: Option<Arc<Lut>>,
     pub roi: Option<Roi>,
+    pub lens_blur_params: Option<LensBlurParams>,
+    pub lens_blur_mask: Option<&'a ImageBuffer<Luma<u8>, Vec<u8>>>,
 }
 
 #[repr(C)]
@@ -505,12 +507,34 @@ struct FlareParams {
     _pad: f32,
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LensBlurParams {
+    pub amount: f32,
+    pub size: f32,
+    pub aperture: f32,
+    pub bokeh_shape: u32,
+    pub bokeh_intensity: f32,
+    pub highlight_boost: f32,
+    pub fringe_amount: f32,
+    pub swirl_amount: f32,
+    pub width: u32,
+    pub height: u32,
+    pub tile_offset_x: u32,
+    pub tile_offset_y: u32,
+}
+
 pub struct GpuProcessor {
     context: GpuContext,
     blur_bgl: wgpu::BindGroupLayout,
     h_blur_pipeline: wgpu::ComputePipeline,
     v_blur_pipeline: wgpu::ComputePipeline,
     blur_params_buffer: wgpu::Buffer,
+
+    lens_blur_bgl: wgpu::BindGroupLayout,
+    lens_blur_pipeline: wgpu::ComputePipeline,
+    lens_blur_params_buffer: wgpu::Buffer,
+    lens_blur_output_view: wgpu::TextureView,
 
     flare_bgl_0: wgpu::BindGroupLayout,
     flare_bgl_1: wgpu::BindGroupLayout,
@@ -617,6 +641,82 @@ impl GpuProcessor {
         let blur_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Blur Params Buffer"),
             size: std::mem::size_of::<BlurParams>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Lens Blur pipeline setup
+        let lens_blur_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Lens Blur Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/lens_blur.wgsl").into()),
+        });
+
+        let lens_blur_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Lens Blur BGL"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let lens_blur_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Lens Blur Pipeline Layout"),
+                bind_group_layouts: &[&lens_blur_bgl],
+                immediate_size: 0,
+            });
+
+        let lens_blur_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Lens Blur Pipeline"),
+                layout: Some(&lens_blur_pipeline_layout),
+                module: &lens_blur_shader,
+                entry_point: Some("lens_blur_main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+
+        let lens_blur_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Lens Blur Params Buffer"),
+            size: std::mem::size_of::<LensBlurParams>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -987,6 +1087,12 @@ impl GpuProcessor {
         });
         let structure_blur_view = structure_blur_texture.create_view(&Default::default());
 
+        let lens_blur_output_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Lens Blur Output Texture"),
+            ..reusable_texture_desc
+        });
+        let lens_blur_output_view = lens_blur_output_texture.create_view(&Default::default());
+
         let tile_output_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Tile Output Texture"),
             size: max_tile_size,
@@ -1037,6 +1143,10 @@ impl GpuProcessor {
             h_blur_pipeline,
             v_blur_pipeline,
             blur_params_buffer,
+            lens_blur_bgl,
+            lens_blur_pipeline,
+            lens_blur_params_buffer,
+            lens_blur_output_view,
             flare_bgl_0,
             flare_bgl_1,
             flare_threshold_pipeline,
@@ -1397,6 +1507,117 @@ impl GpuProcessor {
                 let did_create_clarity_blur = run_blur(8.0, &self.clarity_blur_view);
                 let did_create_structure_blur = run_blur(40.0, &self.structure_blur_view);
 
+                // Run lens blur pre-pass if active
+                let use_lens_blur = request.lens_blur_params.is_some()
+                    && request.lens_blur_params.as_ref().unwrap().amount > 0.0;
+
+                if use_lens_blur {
+                    let lb_params = request.lens_blur_params.as_ref().unwrap();
+                    let mut lb_params_adjusted = *lb_params;
+                    lb_params_adjusted.width = input_width;
+                    lb_params_adjusted.height = input_height;
+                    lb_params_adjusted.tile_offset_x = input_x_start;
+                    lb_params_adjusted.tile_offset_y = input_y_start;
+
+                    queue.write_buffer(
+                        &self.lens_blur_params_buffer,
+                        0,
+                        bytemuck::bytes_of(&lb_params_adjusted),
+                    );
+
+                    // Create a single-layer mask texture view for the lens blur
+                    let lb_mask_view = if let Some(lb_mask) = request.lens_blur_mask {
+                        let lb_mask_texture = device.create_texture_with_data(
+                            queue,
+                            &wgpu::TextureDescriptor {
+                                label: Some("Lens Blur Mask Texture"),
+                                size: wgpu::Extent3d {
+                                    width,
+                                    height,
+                                    depth_or_array_layers: 1,
+                                },
+                                mip_level_count: 1,
+                                sample_count: 1,
+                                dimension: wgpu::TextureDimension::D2,
+                                format: wgpu::TextureFormat::R8Unorm,
+                                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                                view_formats: &[],
+                            },
+                            wgpu::util::TextureDataOrder::MipMajor,
+                            lb_mask.as_raw(),
+                        );
+                        lb_mask_texture.create_view(&Default::default())
+                    } else {
+                        // Use first mask bitmap as fallback
+                        let fallback_data = vec![255u8; (width * height) as usize];
+                        let fallback_texture = device.create_texture_with_data(
+                            queue,
+                            &wgpu::TextureDescriptor {
+                                label: Some("Lens Blur Fallback Mask"),
+                                size: wgpu::Extent3d {
+                                    width,
+                                    height,
+                                    depth_or_array_layers: 1,
+                                },
+                                mip_level_count: 1,
+                                sample_count: 1,
+                                dimension: wgpu::TextureDimension::D2,
+                                format: wgpu::TextureFormat::R8Unorm,
+                                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                                view_formats: &[],
+                            },
+                            wgpu::util::TextureDataOrder::MipMajor,
+                            &fallback_data,
+                        );
+                        fallback_texture.create_view(&Default::default())
+                    };
+
+                    let lb_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Lens Blur BG"),
+                        layout: &self.lens_blur_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(input_texture_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(
+                                    &self.lens_blur_output_view,
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: self.lens_blur_params_buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: wgpu::BindingResource::TextureView(&lb_mask_view),
+                            },
+                        ],
+                    });
+
+                    let mut lb_encoder = device.create_command_encoder(&Default::default());
+                    {
+                        let mut cpass = lb_encoder.begin_compute_pass(&Default::default());
+                        cpass.set_pipeline(&self.lens_blur_pipeline);
+                        cpass.set_bind_group(0, &lb_bind_group, &[]);
+                        cpass.dispatch_workgroups(
+                            input_width.div_ceil(8),
+                            input_height.div_ceil(8),
+                            1,
+                        );
+                    }
+                    queue.submit(Some(lb_encoder.finish()));
+                }
+
+                // Select input texture for main shader: use lens blur output if active
+                let main_input_view = if use_lens_blur {
+                    &self.lens_blur_output_view
+                } else {
+                    input_texture_view
+                };
+
                 let mut main_encoder = device.create_command_encoder(&Default::default());
 
                 let mut tile_adjustments = adjustments;
@@ -1411,7 +1632,7 @@ impl GpuProcessor {
                 let mut bind_group_entries = vec![
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(input_texture_view),
+                        resource: wgpu::BindingResource::TextureView(main_input_view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
