@@ -1,6 +1,7 @@
 import Slider from '../ui/Slider';
 import { Adjustments, Effect, CreativeAdjustment } from '../../utils/adjustments';
 import LUTControl from '../ui/LUTControl';
+import LensBlur from './LensBlur';
 import { AppSettings } from '../ui/AppProperties';
 import Text from '../ui/Text';
 import { TextVariants } from '../../types/typography';
@@ -82,6 +83,11 @@ export default function EffectsPanel({
             onDragStateChange={onDragStateChange}
           />
         )}
+
+        <LensBlur
+          adjustments={adjustments}
+          setAdjustments={setAdjustments}
+        />
       </div>
 
       {!isForMask && (

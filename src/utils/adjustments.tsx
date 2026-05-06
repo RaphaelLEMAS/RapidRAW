@@ -87,12 +87,22 @@ export enum Effect {
 }
 
 export enum CreativeAdjustment {
-  GlowAmount = 'glowAmount',
-  HalationAmount = 'halationAmount',
-  FlareAmount = 'flareAmount',
-}
+   GlowAmount = 'glowAmount',
+   HalationAmount = 'halationAmount',
+   FlareAmount = 'flareAmount',
 
-export enum TransformAdjustment {
+   // Lens Blur
+   LensBlurAmount = 'lensBlurAmount',
+   LensFStop = 'lensFStop',
+   LensRadius = 'lensRadius',
+   BokehShape = 'bokehShape',
+   LensAnisotropy = 'lensAnisotropy',
+   LensFalloffEnabled = 'lensFalloffEnabled',
+   LensFalloffAmount = 'lensFalloffAmount',
+   FalloffMode = 'falloffMode',
+ }
+
+ export enum TransformAdjustment {
   TransformDistortion = 'transformDistortion',
   TransformVertical = 'transformVertical',
   TransformHorizontal = 'transformHorizontal',
@@ -739,12 +749,16 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
       keys: [Effect.VignetteAmount, Effect.VignetteFeather, Effect.VignetteMidpoint, Effect.VignetteRoundness],
     },
     { label: 'Grain', keys: [Effect.GrainAmount, Effect.GrainRoughness, Effect.GrainSize] },
-    {
-      label: 'Halation & Glow',
-      keys: [CreativeAdjustment.GlowAmount, CreativeAdjustment.HalationAmount, CreativeAdjustment.FlareAmount],
-    },
-    {
-      label: 'LUT',
+{
+       label: 'Halation & Glow',
+       keys: [CreativeAdjustment.GlowAmount, CreativeAdjustment.HalationAmount, CreativeAdjustment.FlareAmount],
+     },
+     {
+       label: 'Lens Blur',
+       keys: [CreativeAdjustment.LensBlurAmount, CreativeAdjustment.LensFStop, CreativeAdjustment.LensRadius, CreativeAdjustment.BokehShape, CreativeAdjustment.LensAnisotropy, CreativeAdjustment.LensFalloffEnabled, CreativeAdjustment.LensFalloffAmount, CreativeAdjustment.FalloffMode],
+     },
+     {
+       label: 'LUT',
       keys: [Effect.LutIntensity, Effect.LutName, Effect.LutPath, Effect.LutSize, Effect.LutData],
     },
   ],
@@ -812,6 +826,14 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     CreativeAdjustment.GlowAmount,
     CreativeAdjustment.HalationAmount,
     CreativeAdjustment.FlareAmount,
+    CreativeAdjustment.LensBlurAmount,
+    CreativeAdjustment.LensFStop,
+    CreativeAdjustment.LensRadius,
+    CreativeAdjustment.BokehShape,
+    CreativeAdjustment.LensAnisotropy,
+    CreativeAdjustment.LensFalloffEnabled,
+    CreativeAdjustment.LensFalloffAmount,
+    CreativeAdjustment.FalloffMode,
     Effect.GrainAmount,
     Effect.GrainRoughness,
     Effect.GrainSize,
