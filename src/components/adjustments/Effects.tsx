@@ -104,6 +104,16 @@ export default function EffectsPanel({
               value={adjustments.lensBlurRadius || 0}
               onDragStateChange={onDragStateChange}
             />
+
+            <Slider
+              label="Bokeh"
+              max={100}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange('bokehAmount', e.target.value)}
+              step={1}
+              value={adjustments.bokehAmount || 0}
+              onDragStateChange={onDragStateChange}
+            />
           </>
         )}
       </div>

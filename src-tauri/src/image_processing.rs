@@ -1333,6 +1333,7 @@ pub struct GlobalAdjustments {
 
     pub lens_blur_amount: f32,
     pub lens_blur_radius: f32,
+    pub bokeh_amount: f32,
 
     _pad16_1: f32,
     _pad16_2: f32,
@@ -1365,8 +1366,9 @@ pub struct MaskAdjustments {
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
 
-    pub lens_blur_amount: f32,
+   pub lens_blur_amount: f32,
     pub lens_blur_radius: f32,
+    pub bokeh_amount: f32,
 
     _pad_cg1: f32,
     _pad_cg2: f32,
@@ -1452,10 +1454,11 @@ struct AdjustmentScales {
     color_calibration_hue: f32,
     color_calibration_saturation: f32,
 
-    glow: f32,
+   glow: f32,
     halation: f32,
     flares: f32,
     lens_blur: f32,
+    bokeh: f32,
 }
 
 const SCALES: AdjustmentScales = AdjustmentScales {
@@ -1502,10 +1505,11 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     color_calibration_hue: 400.0,
     color_calibration_saturation: 120.0,
 
-    glow: 100.0,
+   glow: 100.0,
     halation: 100.0,
     flares: 100.0,
     lens_blur: 100.0,
+    bokeh: 100.0,
 };
 
 fn parse_hsl_adjustments(js_hsl: &serde_json::Value) -> [HslColor; 8] {
@@ -2061,6 +2065,7 @@ fn get_global_adjustments_from_json(
 
         lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur, Some(0.0)),
         lens_blur_radius: get_val("effects", "lensBlurRadius", SCALES.lens_blur, Some(0.0)),
+        bokeh_amount: get_val("effects", "bokehAmount", SCALES.bokeh, Some(0.0)),
 
         _pad16_1: 0.0,
         _pad16_2: 0.0,
@@ -2142,6 +2147,7 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         flare_amount: get_val("effects", "flareAmount", SCALES.flares),
         lens_blur_amount: get_val("effects", "lensBlurAmount", SCALES.lens_blur),
         lens_blur_radius: get_val("effects", "lensBlurRadius", SCALES.lens_blur),
+        bokeh_amount: get_val("effects", "bokehAmount", SCALES.bokeh, Some(0.0)),
         sharpness_threshold: get_val("details", "sharpnessThreshold", SCALES.sharpness_threshold),
 
         _pad_cg1: 0.0,

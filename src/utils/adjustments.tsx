@@ -309,6 +309,7 @@ export interface MaskAdjustments {
   id?: string;
   lensBlurAmount: number;
   lensBlurRadius: number;
+  bokehAmount: number;
   lumaNoiseReduction: number;
   saturation: number;
   sectionVisibility: SectionVisibility;
@@ -446,6 +447,7 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
   },
   lensBlurAmount: 0,
   lensBlurRadius: 0,
+  bokehAmount: 0,
   lumaNoiseReduction: 0,
   saturation: 0,
   sectionVisibility: {
@@ -620,6 +622,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
         halationAmount: containerAdjustments.halationAmount ?? INITIAL_MASK_ADJUSTMENTS.halationAmount,
         lensBlurAmount: containerAdjustments.lensBlurAmount ?? INITIAL_MASK_ADJUSTMENTS.lensBlurAmount,
         lensBlurRadius: containerAdjustments.lensBlurRadius ?? INITIAL_MASK_ADJUSTMENTS.lensBlurRadius,
+        bokehAmount: containerAdjustments.bokehAmount ?? INITIAL_MASK_ADJUSTMENTS.bokehAmount,
         colorGrading: { ...INITIAL_MASK_ADJUSTMENTS.colorGrading, ...(containerAdjustments.colorGrading || {}) },
         hsl: { ...INITIAL_MASK_ADJUSTMENTS.hsl, ...(containerAdjustments.hsl || {}) },
         curves: containerAdjustments.curves ? deepCloneCurves(containerAdjustments.curves) : getDefaultCurves(),

@@ -112,8 +112,9 @@ struct GlobalAdjustments {
     flare_amount: f32,
     sharpness_threshold: f32,
 
-    lens_blur_amount: f32,
+ lens_blur_amount: f32,
     lens_blur_radius: f32,
+    bokeh_amount: f32,
 
 }
 
@@ -142,8 +143,9 @@ struct MaskAdjustments {
     flare_amount: f32,
     sharpness_threshold: f32,
 
-    lens_blur_amount: f32,
+  lens_blur_amount: f32,
     lens_blur_radius: f32,
+    bokeh_amount: f32,
 
     _pad_cg1: f32,
     _pad_cg2: f32,
@@ -1422,6 +1424,7 @@ fn apply_lens_blur(
     blurred_color: vec3<f32>,
     intensity: f32,
     radius: f32,
+    bokeh_amount: f32,
     coord: vec2<u32>
 ) -> vec3<f32> {
     if (intensity <= 0.0 || radius <= 0.0) {
@@ -1434,24 +1437,49 @@ fn apply_lens_blur(
     let color_luma = get_luma(max(color, vec3<f32>(0.0)));
     let blurred_luma = get_luma(max(blurred_color, vec3<f32>(0.0)));
 
+    // Preserve luminance to prevent dark halos — improved from current approach
     let luma_ratio = mix(1.0, max(blurred_luma / max(color_luma, 0.001), 0.5), smoothstep(0.5, 0.95, color_luma));
     let normalized_blur = blurred_color * luma_ratio;
 
-    let aperture_shape = mix(0.6, 1.2, effective_radius);
-    let falloff_curve = pow(strength, aperture_shape);
+    // Piecewise blur weight with in-focus plateau (mimics real DOF zone of acceptance)
+    var blur_weight: f32;
+    if (strength > 0.15) {
+        blur_weight = smoothstep(0.15, 1.0, strength);
+    } else {
+        blur_weight = 0.0;
+    }
 
-    let edge_softness = smoothstep(0.0, 0.3, strength) * (1.0 - smoothstep(0.7, 1.0, strength));
-    let bokeh_weight = mix(falloff_curve, falloff_curve * 1.4, edge_softness);
+    // Simple Gaussian blend (bokeh_amount = 0 path)
+    let gaussian_blend = mix(color, normalized_blur, blur_weight);
 
-    let coord_f = vec2<f32>(coord);
-    let depth_distortion = vec2<f32>(
-        sin(coord_f.y * 12.9898 + coord_f.x * 78.233) * 0.002 * effective_radius,
-        cos(coord_f.x * 45.164 + coord_f.y * 23.567) * 0.002 * effective_radius
-    );
+    if (bokeh_amount <= 0.0 || strength < 0.25) {
+        return gaussian_blend;
+    }
 
-    let final_weight = clamp(bokeh_weight * (1.0 - length(depth_distortion)), 0.0, 1.0);
+    // --- Bokeh-enhanced rendering for out-of-focus highlights ---
 
-    return mix(color, normalized_blur, final_weight);
+    // Detect bright areas that benefit from bokeh character
+    let is_highlight = color_luma > 0.55 && blurred_luma < color_luma * 0.82;
+    let highlight_boost = if (is_highlight) { 1.6 } else { 1.0 };
+
+    // Bokeh intensity curve — flatter at high bokeh values for more visible effect
+    let falloff_exp = mix(2.5, 0.45, clamp(bokeh_amount, 0.0, 1.0));
+    let bokeh_curve = pow(clamp(strength, 0.0, 1.0), falloff_exp);
+
+    // Defocus amount peaks in mid-to-high strength range (not at very edges)
+    let defocus_peak = smoothstep(0.25, 0.7, strength) * (1.0 - smoothstep(0.85, 1.0, strength));
+    let bokeh_weight_raw = blur_weight * highlight_boost;
+
+    // Contrast boost for out-of-focus highlights — simulates defined bokeh edges
+    let bokeh_contrast = mix(0.94, 1.12, clamp(is_highlight * bokeh_amount * 1.5, 0.0, 1.0));
+    let sharpened_blur = normalized_blur * bokeh_contrast;
+
+    // Blend between Gaussian blend and bokeh-enhanced based on bokeh_amount + highlight presence
+    let final_blend_weight = clamp(bokeh_curve * bokeh_weight_raw * (0.3 + 0.7 * bokeh_amount), 0.0, 1.0);
+    let bokeh_result = mix(normalized_blur, sharpened_blur, defocus_peak * clamp(bokeh_amount * 2.0, 0.0, 1.0));
+
+    // Final composition: gaussian_blend with optional bokeh enhancement layer
+    return mix(gaussian_blend, bokeh_result, final_blend_weight);
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -1503,8 +1531,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     var t_halation = adjustments.global.halation_amount;
     var t_flare = adjustments.global.flare_amount;
     var t_sharpness = adjustments.global.sharpness;
-    var t_lens_blur_amount: f32 = adjustments.global.lens_blur_amount;
+  var t_lens_blur_amount: f32 = adjustments.global.lens_blur_amount;
     var t_lens_blur_radius: f32 = adjustments.global.lens_blur_radius;
+    var t_bokeh_amount: f32 = adjustments.global.bokeh_amount;
 
     var h0_h = adjustments.global.hsl[0].hue; var h0_s = adjustments.global.hsl[0].saturation; var h0_l = adjustments.global.hsl[0].luminance;
     var h1_h = adjustments.global.hsl[1].hue; var h1_s = adjustments.global.hsl[1].saturation; var h1_l = adjustments.global.hsl[1].luminance;
@@ -1543,8 +1572,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             t_halation += m.halation_amount * influence;
             t_flare += m.flare_amount * influence;
 
-            t_lens_blur_amount += m.lens_blur_amount * influence;
+           t_lens_blur_amount += m.lens_blur_amount * influence;
             t_lens_blur_radius += m.lens_blur_radius * influence;
+            t_bokeh_amount += m.bokeh_amount * influence;
 
             h0_h += m.hsl[0].hue * influence; h0_s += m.hsl[0].saturation * influence; h0_l += m.hsl[0].luminance * influence;
             h1_h += m.hsl[1].hue * influence; h1_s += m.hsl[1].saturation * influence; h1_l += m.hsl[1].luminance * influence;
@@ -1631,9 +1661,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         processed_rgb += flare_color * t_flare * protection;
     }
 
-    if (t_lens_blur_amount > 0.0) {
+ if (t_lens_blur_amount > 0.0) {
         processed_rgb = apply_lens_blur(
-            processed_rgb, tonal_blurred, t_lens_blur_amount, t_lens_blur_radius, absolute_coord
+            processed_rgb, tonal_blurred, t_lens_blur_amount, t_lens_blur_radius, t_bokeh_amount, absolute_coord
         );
     }
 
