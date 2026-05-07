@@ -22,40 +22,15 @@ const FALLOFF_MODES = [
   { label: 'Exponential', value: 1 },
 ];
 
-// Standard photographic full f-stops (√2 geometric progression from f/1.0 to f/32)
-const STANDARD_FSTOPS = [1.0, 1.4, 2.0, 2.8, 4.0, 5.6, 8.0, 11, 16, 22, 32];
-
-// DISCRETE_STEPS mode: slider value is an INDEX into STANDARD_FSTOPS
-const FSTOP_SLIDER_MAX = (STANDARD_FSTOPS.length - 1) * 10; // 100 (= index 10, f/32)
-const FSTOP_SLIDER_MIN = 0; // index 0, f/1.0
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-// Map slider numeric value (0..100) to discrete f-stop via √2 progression
-function sliderToFStop(sliderValue: number): number {
-  const clamped = clamp(sliderValue, FSTOP_SLIDER_MIN, FSTOP_SLIDER_MAX);
-  // Each full stop = 10 slider units; index = floor(clamped / 10)
-  const index = Math.round(clamped / 10);
-  return STANDARD_FSTOPS[index];
-}
-
-// Display label from stored f-stop value (reads the standard array directly)
-function formatFStop(fstop: number): string {
-  // Find which standard stop this value corresponds to and display it cleanly
-  const index = STANDARD_FSTOPS.indexOf(Math.round(fstop * 10) / 10);
-  if (index !== -1) {
-    return `f/${STANDARD_FSTOPS[index]}`;
-  }
-  // Fallback: round to nearest standard stop
-  let closest = STANDARD_FSTOPS[0];
-  for (const s of STANDARD_FSTOPS) {
-    if (Math.abs(s - fstop) < Math.abs(closest - fstop)) {
-      closest = s;
-    }
-  }
-  return `f/${closest}`;
+// Format slider display values for continuous control
+function fmtBlur(v: number): string {
+  if (v >= 10) return String(Math.round(v));
+  const rounded = parseFloat(v.toFixed(1));
+  return String(rounded);
 }
 
 export default function LensBlur({ adjustments, setAdjustments }: LensBlurProps) {
@@ -74,19 +49,15 @@ export default function LensBlur({ adjustments, setAdjustments }: LensBlurProps)
     }
   };
 
-  // Aperture stored as f-stop index * 10 for sub-step granularity in slider
-  const lensFStopIndex = adjustments.lensFStop || 6; // default index=6 → f/5.6
-  const lensFStopValue = sliderToFStop(lensFStopIndex);
-
-  const bokehShape = adjustments.bokehShape || 0;
-  const lensAnisotropy = adjustments.lensAnisotropy || 0;
-  const lensFalloffEnabled = (adjustments.lensFalloffEnabled ?? 100) > 50;
-  const lensFalloffAmount = adjustments.lensFalloffAmount || 30;
-  const falloffMode = adjustments.falloffMode || 0;
-
-  // Lens blur amount and radius (retrieved after bokehShape for readability)
+  // Continuous float values — no snapping or interpolation
   const lensBlurAmount = adjustments.lensBlurAmount || 0;
-  const lensRadius = adjustments.lensRadius || 50.0;
+  const lensFStop = clamp(adjustments.lensFStop ?? 50, 0, 100);     // abstract intensity [0..100]
+  const lensRadius = clamp(adjustments.lensRadius || 0, 0, 50);
+  const bokehShape = adjustments.bokehShape || 0;
+  const lensAnisotropy = clamp(adjustments.lensAnisotropy ?? 0, -90, 90);
+  const lensFalloffEnabled = (adjustments.lensFalloffEnabled ?? 100) > 50;
+  const lensFalloffAmount = clamp(adjustments.lensFalloffAmount || 30, 0, 100);
+  const falloffMode = adjustments.falloffMode || 0;
 
   const isCircular = bokehShape === 0;
 
@@ -96,22 +67,22 @@ export default function LensBlur({ adjustments, setAdjustments }: LensBlurProps)
         label="Blur Amount"
         max={100}
         min={0}
-        onChange={(e: any) => handleLensBlurChange(CreativeAdjustment.LensBlurAmount, parseInt(e.target.value, 10))}
-        step={1}
+        onChange={(e: any) => handleLensBlurChange(CreativeAdjustment.LensBlurAmount, parseFloat(e.target.value))}
+        step={0}
         value={lensBlurAmount}
         suffix="%"
       />
 
       <Slider
-        label={`Aperture (F): ${formatFStop(lensFStopValue)}`}
-        max={FSTOP_SLIDER_MAX}
-        min={FSTOP_SLIDER_MIN}
-        step={10}
+        label={`Bokeh Intensity: ${fmtBlur(lensFStop)}`}
+        max={100}
+        min={0}
         onChange={(e: any) => {
-          const raw = clamp(parseFloat(e.target.value), FSTOP_SLIDER_MIN, FSTOP_SLIDER_MAX);
+          const raw = clamp(parseFloat(e.target.value), 0, 100);
           handleLensBlurChange(CreativeAdjustment.LensFStop, raw);
         }}
-        value={lensFStopIndex}
+        step={0}
+        value={lensFStop}
       />
 
       <Slider
@@ -119,10 +90,10 @@ export default function LensBlur({ adjustments, setAdjustments }: LensBlurProps)
         max={50}
         min={0}
         onChange={(e: any) => {
-          const clamped = clamp(parseInt(e.target.value, 10), 0, 50);
+          const clamped = clamp(parseFloat(e.target.value), 0, 50);
           handleLensBlurChange(CreativeAdjustment.LensRadius, clamped);
         }}
-        step={1}
+        step={0}
         value={lensRadius}
         suffix="px"
       />
@@ -136,11 +107,14 @@ export default function LensBlur({ adjustments, setAdjustments }: LensBlurProps)
       />
 
       <Slider
-        label={`Anisotropy: ${lensAnisotropy >= 0 ? '+' : ''}${Math.round(lensAnisotropy)}°`}
+        label={`Anisotropy: ${lensAnisotropy >= 0 ? '+' : ''}${fmtBlur(lensAnisotropy)}°`}
         max={90}
         min={-90}
-        onChange={(e: any) => handleLensBlurChange(CreativeAdjustment.LensAnisotropy, parseInt(e.target.value, 10))}
-        step={1}
+        onChange={(e: any) => {
+          const clamped = clamp(parseFloat(e.target.value), -90, 90);
+          handleLensBlurChange(CreativeAdjustment.LensAnisotropy, clamped);
+        }}
+        step={0}
         value={lensAnisotropy}
       />
 
@@ -157,8 +131,8 @@ export default function LensBlur({ adjustments, setAdjustments }: LensBlurProps)
               label="Falloff Amount"
               max={100}
               min={0}
-              onChange={(e: any) => handleLensBlurChange(CreativeAdjustment.LensFalloffAmount, parseInt(e.target.value, 10))}
-              step={1}
+              onChange={(e: any) => handleLensBlurChange(CreativeAdjustment.LensFalloffAmount, parseFloat(e.target.value))}
+              step={0}
               value={lensFalloffAmount}
               suffix="%"
             />

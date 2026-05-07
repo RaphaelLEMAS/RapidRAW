@@ -70,10 +70,15 @@ const Slider = ({
   }, [fillOrigin, defaultValue, min, max]);
 
   const stepStr = String(step);
-  const decimalPlaces = stepStr.includes('.') ? stepStr.split('.')[1].length : 0;
+  const decimalPlaces = step <= 0 ? 4 : (stepStr.includes('.') ? stepStr.split('.')[1].length : 0);
 
+  // When step=0, provide fully continuous control with no snapping.
+  // Otherwise snap to the nearest step increment within [min, max].
   const snapToStep = useCallback(
     (val: number): number => {
+      if (step <= 0) {
+        return parseFloat(Math.max(min, Math.min(max, val)).toFixed(decimalPlaces));
+      }
       const snapped = Math.round((val - min) / step) * step + min;
       const clamped = Math.max(min, Math.min(max, snapped));
       return parseFloat(clamped.toFixed(decimalPlaces));
@@ -104,7 +109,9 @@ const Slider = ({
 
       event.preventDefault();
       const direction = -Math.sign(event.deltaY);
-      const newValue = value + direction * step * 2;
+      // When step=0 (continuous), use a fraction of the range as wheel delta
+      const wheelDelta = step > 0 ? step * 2 : (max - min) * 0.005;
+      const newValue = value + direction * wheelDelta;
       const roundedNewValue = parseFloat(newValue.toFixed(decimalPlaces));
 
       const clampedValue = Math.max(min, Math.min(max, roundedNewValue));

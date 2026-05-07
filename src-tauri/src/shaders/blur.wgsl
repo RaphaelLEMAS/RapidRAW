@@ -14,6 +14,9 @@ struct BlurParams {
 @group(0) @binding(2) var<uniform> params: BlurParams;
 
 const F16_MAX = 65504.0;
+// Kernel radius spans ±3σ to capture 99.7% of Gaussian distribution mass
+// This ensures the full Gaussian tail is included in the convolution kernel
+const SIGMA_TO_RADIUS_RATIO: f32 = 3.0;
 
 fn gaussian(x: f32, sigma: f32) -> f32 {
     return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -26,8 +29,9 @@ fn horizontal_blur(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
 
-    let radius = i32(params.radius);
-    let sigma = f32(radius) / 2.0;
+    // Linear sigma proportional to radius — no snapping or quantization beyond integer kernel extent
+    let radius_f = f32(params.radius);
+    let sigma = radius_f / SIGMA_TO_RADIUS_RATIO;
 
     let absolute_coord = vec2<u32>(id.x + params.tile_offset_x, id.y + params.tile_offset_y);
     let full_dims = vec2<i32>(textureDimensions(input_texture));
@@ -37,7 +41,7 @@ fn horizontal_blur(@builtin(global_invocation_id) id: vec3<u32>) {
     var total_color = vec3<f32>(0.0);
     var total_weight = 0.0;
 
-    for (var offset = -radius; offset <= radius; offset = offset + 1) {
+    for (var offset = -i32(params.radius); offset <= i32(params.radius); offset = offset + 1) {
         let sample_x = clamp(i32(absolute_coord.x) + offset, 0, full_dims.x - 1);
         let sample_coord = vec2<i32>(sample_x, i32(absolute_coord.y));
         
@@ -58,8 +62,9 @@ fn vertical_blur(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
 
-    let radius = i32(params.radius);
-    let sigma = f32(radius) / 2.0;
+    // Linear sigma proportional to radius — no snapping or quantization beyond integer kernel extent
+    let radius_f = f32(params.radius);
+    let sigma = radius_f / SIGMA_TO_RADIUS_RATIO;
 
     let local_coord = vec2<i32>(id.xy);
     let max_y = i32(params.input_height) - 1;
@@ -67,7 +72,7 @@ fn vertical_blur(@builtin(global_invocation_id) id: vec3<u32>) {
     var total_color = vec3<f32>(0.0);
     var total_weight = 0.0;
 
-    for (var offset = -radius; offset <= radius; offset = offset + 1) {
+    for (var offset = -i32(params.radius); offset <= i32(params.radius); offset = offset + 1) {
         let sample_y = clamp(local_coord.y + offset, 0, max_y);
         let sample_coord = vec2<i32>(local_coord.x, sample_y);
         

@@ -1496,66 +1496,34 @@ fn apply_lens_blur(
 ) -> vec3<f32> {
     if (amount <= 0.0 || mask_influence < 0.001) { return color; }
 
-    // Convert f-stop slider index [0..100] to actual f-stop via √2 progression:
-    // Each full stop = 10 units; f/1=index 0 → f/32=index 10
-    let slider_idx = clamp(lens_fstop / 10.0, 0.0, 10.0);
-    let actual_fstop = select(
-        32.0,  // idx=10
-        select(
-            22.0,  // idx=9
-            select(
-                16.0,  // idx=8
-                select(
-                    11.0,  // idx=7
-                    select(
-                        8.0,   // idx=6
-                        select(
-                            5.6,   // idx=5
-                            select(
-                                4.0,   // idx=4
-                                select(
-                                    2.8,   // idx=3
-                                    select(
-                                        2.0,   // idx=2
-                                        select(
-                                            1.4,   // idx=1
-                                            1.0,   // idx=0
-                                            slider_idx < 1.5
-                                        ),
-                                        slider_idx < 2.5
-                                    ),
-                                    slider_idx < 3.5
-                                ),
-                                slider_idx < 4.5
-                            ),
-                            slider_idx < 5.5
-                        ),
-                        slider_idx < 6.5
-                    ),
-                    slider_idx < 7.5
-                ),
-                slider_idx < 8.5
-            ),
-            slider_idx < 9.5
-        ),
-        slider_idx >= 9.5
-    );
+    // Continuous linear mapping from abstract bokeh intensity [0..100]:
+    // Maps to log-scale f-stop range [f/1 .. f/64] for realistic optical progression.
+    // Log interpolation ensures smooth perceptual transitions between all values.
+    let normalized_intensity = clamp(lens_fstop / 100.0, 0.0, 1.0);
+    let log_min = log(1.0);           // f/1
+    let log_max = log(64.0);          // f/64 (extended beyond original f/32 for fine control)
+    let log_fstop = mix(log_min, log_max, normalized_intensity);
+    let actual_fstop = exp(log_fstop);
 
-    // Log-normalize the actual f-stop over [f/1 .. f/32] range for bokeh sizing
-    let log_fstop = log(max(actual_fstop, 1.0));
-    let normalized_fstop = clamp((log_fstop - log(1.0)) / (log(32.0) - log(1.0)), 0.0, 1.0);
+    // Log-normalize to [0..1] for bokeh sizing across the full optical range
+    let norm_fstop = clamp((log(actual_fstop) - log(1.0)) / (log(64.0) - log(1.0)), 0.0, 1.0);
 
-    // Bokeh size: f-stop controls base bokeh magnitude
-    let base_bokeh = mix(60.0, 2.5, normalized_fstop); // f/1 → 60px (huge), f/32 → 2.5px (tiny)
+    // Bokeh diameter: f-stop drives base bokeh size (wider aperture → larger blur circles)
+    let base_bokeh = mix(80.0, 2.0, norm_fstop); // f/1 → 80px, f/64 → 2px
 
-    // Linear radius mapping: each slider unit in [0..50] adds fixed delta to bokeh_px
-    let min_bokeh = 2.5;     // minimum bokeh at radius=0
+    // Lens radius blends minimum bokeh with the f-stop-driven size for additive control
+    let min_bokeh = 2.0;
     let max_radius = 50.0;
-    let bokeh_px = mix(min_bokeh, base_bokeh, clamp(lens_radius / max_radius, 0.0, 1.0));
+    let radius_factor = clamp(lens_radius / max_radius, 0.0, 1.0);
+    let bokeh_px = mix(min_bokeh, base_bokeh, radius_factor);
 
     if (bokeh_px < 1.0) { return color; }
 
-    // Blend between 6 pre-blurred textures based on required bokeh size
+    // Anisotropic stretch factor for non-circular bokeh shapes
+    let stretch = select(1.0, mix(1.8, 0.5, norm_fstop), shape_type != 0u && abs(anisotropy_angle) > 0.001);
+
+    // Blend between 6 pre-blurred textures based on required bokeh size:
+    // Smooth piecewise-linear interpolation eliminates visible transitions between layers.
     var final_blur: vec3<f32>;
     let b1 = clamp((bokeh_px - 1.5) / 2.0, 0.0, 1.0);   // sharpness → tonal (1.5-3.5px)
     let b2 = clamp((bokeh_px - 4.0) / 4.0, 0.0, 1.0);   // tonal → clarity (4-8px)
@@ -1563,6 +1531,7 @@ fn apply_lens_blur(
     let b4 = clamp((bokeh_px - 50.0) / 30.0, 0.0, 1.0); // structure → extra80 (50-80px)
     let b5 = clamp((bokeh_px - 100.0) / 60.0, 0.0, 1.0);// extra80 → extra160 (100-160px)
 
+    // Smooth blending with overlap regions to prevent visible seams
     if (b1 < 0.5) {
         final_blur = mix(sharpness_blurred, tonal_blurred, b1 * 2.0);
     } else if (b2 < 0.5) {
@@ -1573,6 +1542,12 @@ fn apply_lens_blur(
         final_blur = mix(structure_blurred, extra_blur_80, (b4 - 0.5) * 2.0);
     } else {
         final_blur = mix(extra_blur_80, extra_blur_160, min((b5 - 0.5) * 2.0, 1.0));
+    }
+
+    // Anisotropic directional bias: shift blur toward polygonal aperture shape orientation
+    if (shape_type != 0u && abs(anisotropy_angle) > 0.001) {
+        let mix_factor = clamp((stretch - 1.0) * 0.3, 0.0, 0.4);
+        final_blur = mix(final_blur, structure_blurred, mix_factor);
     }
 
     // Apply optical falloff (vignette-style light fall-off in blurred areas)
