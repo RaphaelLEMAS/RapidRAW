@@ -374,6 +374,20 @@ fn apply_curve(val: f32, points: array<Point, 16>, count: u32) -> f32 {
     return local_points[count - 1u].y / 255.0;
 }
 
+// Blur texture atlas: each entry = vec2<f32>(center, width) defining the Gaussian kernel.
+// Centers span from ~2px (sharpness) to ~130px (extra_160). Widths ensure adjacent textures
+// overlap significantly so that every bokeh_px value produces proportional contributions
+// from multiple layers — no dead zones or hard boundaries between texture selections.
+const BLUR_TEXTURES: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
+    vec2<f32>(2.0, 4.5),   // sharpness_blurred  — narrow kernel for fine detail
+    vec2<f32>(6.0, 9.0),   // tonal_blurred      — medium overlap with neighbors
+    vec2<f32>(18.0, 20.0), // clarity_blurred    — mid-range local contrast scale
+    vec2<f32>(55.0, 45.0), // structure_blurred  — broad kernel for large-scale features
+    vec2<f32>(95.0, 40.0), // extra_blur_80      — bridges structure and extreme blur
+    vec2<f32>(140.0, 55.0) // extra_blur_160     — broadest kernel for extreme bokeh
+);
+
+
 fn get_shadow_mult(luma: f32, sh: f32, bl: f32) -> f32 {
     var mult = 1.0;
     let safe_luma = max(luma, 0.0001);
@@ -1522,27 +1536,27 @@ fn apply_lens_blur(
     // Anisotropic stretch factor for non-circular bokeh shapes
     let stretch = select(1.0, mix(1.8, 0.5, norm_fstop), shape_type != 0u && abs(anisotropy_angle) > 0.001);
 
-    // Blend between 6 pre-blurred textures based on required bokeh size:
-    // Smooth piecewise-linear interpolation eliminates visible transitions between layers.
-    var final_blur: vec3<f32>;
-    let b1 = clamp((bokeh_px - 1.5) / 2.0, 0.0, 1.0);   // sharpness → tonal (1.5-3.5px)
-    let b2 = clamp((bokeh_px - 4.0) / 4.0, 0.0, 1.0);   // tonal → clarity (4-8px)
-    let b3 = clamp((bokeh_px - 12.0) / 28.0, 0.0, 1.0); // clarity → structure (12-40px)
-    let b4 = clamp((bokeh_px - 50.0) / 30.0, 0.0, 1.0); // structure → extra80 (50-80px)
-    let b5 = clamp((bokeh_px - 100.0) / 60.0, 0.0, 1.0);// extra80 → extra160 (100-160px)
+    // Gaussian-weighted soft blending across all 6 pre-computed blur textures.
+    // Each texture contributes weight_i = exp(-0.5 * ((bokeh_px - center_i) / width_i)^2),
+    // normalized so nearby textures dominate while distant ones still contribute proportionally.
+    // This eliminates all dead zones — every slider tick produces smooth proportional changes.
+    let d0 = bokeh_px - BLUR_TEXTURES[0].x; var w0: f32 = exp(-0.5 * (d0 / BLUR_TEXTURES[0].y) * (d0 / BLUR_TEXTURES[0].y));
+    let d1 = bokeh_px - BLUR_TEXTURES[1].x; var w1: f32 = exp(-0.5 * (d1 / BLUR_TEXTURES[1].y) * (d1 / BLUR_TEXTURES[1].y));
+    let d2 = bokeh_px - BLUR_TEXTURES[2].x; var w2: f32 = exp(-0.5 * (d2 / BLUR_TEXTURES[2].y) * (d2 / BLUR_TEXTURES[2].y));
+    let d3 = bokeh_px - BLUR_TEXTURES[3].x; var w3: f32 = exp(-0.5 * (d3 / BLUR_TEXTURES[3].y) * (d3 / BLUR_TEXTURES[3].y));
+    let d4 = bokeh_px - BLUR_TEXTURES[4].x; var w4: f32 = exp(-0.5 * (d4 / BLUR_TEXTURES[4].y) * (d4 / BLUR_TEXTURES[4].y));
+    let d5 = bokeh_px - BLUR_TEXTURES[5].x; var w5: f32 = exp(-0.5 * (d5 / BLUR_TEXTURES[5].y) * (d5 / BLUR_TEXTURES[5].y));
 
-    // Smooth blending with overlap regions to prevent visible seams
-    if (b1 < 0.5) {
-        final_blur = mix(sharpness_blurred, tonal_blurred, b1 * 2.0);
-    } else if (b2 < 0.5) {
-        final_blur = mix(tonal_blurred, clarity_blurred, (b2 - 0.5) * 2.0);
-    } else if (b3 < 0.5) {
-        final_blur = mix(clarity_blurred, structure_blurred, (b3 - 0.5) * 2.0);
-    } else if (b4 < 0.5) {
-        final_blur = mix(structure_blurred, extra_blur_80, (b4 - 0.5) * 2.0);
-    } else {
-        final_blur = mix(extra_blur_80, extra_blur_160, min((b5 - 0.5) * 2.0, 1.0));
-    }
+    let total_w = w0 + w1 + w2 + w3 + w4 + w5;
+    let iw = 1.0 / max(total_w, 1e-6); // normalize weights; guard against divide-by-zero
+
+    var final_blur: vec3<f32>;
+    final_blur += sharpness_blurred * (w0 * iw);
+    final_blur += tonal_blurred     * (w1 * iw);
+    final_blur += clarity_blurred   * (w2 * iw);
+    final_blur += structure_blurred * (w3 * iw);
+    final_blur += extra_blur_80     * (w4 * iw);
+    final_blur += extra_blur_160    * (w5 * iw);
 
     // Anisotropic directional bias: shift blur toward polygonal aperture shape orientation
     if (shape_type != 0u && abs(anisotropy_angle) > 0.001) {
