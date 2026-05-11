@@ -92,6 +92,12 @@ export enum CreativeAdjustment {
   FlareAmount = 'flareAmount',
 }
 
+export enum DepthAdjustment {
+  DofBlurAmount = 'dofBlurAmount',
+  DofFocusDistance = 'dofFocusDistance',
+  DofTransitionSmoothness = 'dofTransitionSmoothness',
+}
+
 export enum TransformAdjustment {
   TransformDistortion = 'transformDistortion',
   TransformVertical = 'transformVertical',
@@ -228,6 +234,10 @@ export interface Adjustments {
   vignetteMidpoint: number;
   vignetteRoundness: number;
   whites: number;
+
+  dofBlurAmount: number;
+  dofFocusDistance: number;
+  dofTransitionSmoothness: number;
 }
 
 export interface AiPatch {
@@ -557,6 +567,10 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   vignetteMidpoint: 50,
   vignetteRoundness: 0,
   whites: 0,
+
+  dofBlurAmount: 0,
+  dofFocusDistance: 50,
+  dofTransitionSmoothness: 50,
 };
 
 const deepCloneCurves = (curves: any): Curves => ({
@@ -672,8 +686,11 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
       ? deepCloneParametric(loadedAdjustments.parametricCurve)
       : getDefaultParametricCurve(),
     curveMode: loadedAdjustments.curveMode || INITIAL_ADJUSTMENTS.curveMode,
-    masks: normalizedMasks,
+   masks: normalizedMasks,
     aiPatches: normalizedAiPatches,
+    dofBlurAmount: loadedAdjustments.dofBlurAmount ?? INITIAL_ADJUSTMENTS.dofBlurAmount,
+    dofFocusDistance: loadedAdjustments.dofFocusDistance ?? INITIAL_ADJUSTMENTS.dofFocusDistance,
+    dofTransitionSmoothness: loadedAdjustments.dofTransitionSmoothness ?? INITIAL_ADJUSTMENTS.dofTransitionSmoothness,
     sectionVisibility: {
       ...INITIAL_ADJUSTMENTS.sectionVisibility,
       ...(loadedAdjustments.sectionVisibility || {}),

@@ -111,6 +111,10 @@ struct GlobalAdjustments {
     halation_amount: f32,
     flare_amount: f32,
     sharpness_threshold: f32,
+
+    dof_blur_radius: f32,
+    dof_focus_distance: f32,
+    dof_transition_smoothness: f32,
 }
 
 struct MaskAdjustments {
@@ -207,6 +211,8 @@ const HSL_RANGES: array<HslRange, 8> = array<HslRange, 8>(
 @group(0) @binding(10) var flare_texture: texture_2d<f32>;
 @group(0) @binding(11) var flare_sampler: sampler;
 
+@group(0) @binding(12) var depth_map_texture: texture_2d<f32>;
+
 const LUMA_COEFF = vec3<f32>(0.2126, 0.7152, 0.0722);
 
 fn get_luma(c: vec3<f32>) -> f32 {
@@ -297,6 +303,53 @@ fn gradient_noise(p: vec2<f32>) -> f32 {
 fn dither(coords: vec2<u32>) -> f32 {
     let p = vec2<f32>(coords);
     return fract(sin(dot(p, vec2<f32>(12.9898, 78.233))) * 43758.5453) - 0.5;
+}
+
+fn apply_dof_blur(color: vec3<f32>, absolute_coord_u32: vec2<u32>, absolute_coord_i: vec2<i32>) -> vec3<f32> {
+    let dof_amount = adjustments.global.dof_blur_radius;
+    if (dof_amount < 0.01) { return color; }
+
+    let full_dims = vec2<i32>(textureDimensions(input_texture));
+    let depth_val = textureLoad(depth_map_texture, absolute_coord_u32, 0).r * 255.0;
+    let focus_dist = adjustments.global.dof_focus_distance;
+    let smoothness = adjustments.global.dof_transition_smoothness;
+
+    if (smoothness < 0.01) { return color; }
+
+    let depth_diff = abs(depth_val - focus_dist);
+    var blur_radius = dof_amount * (depth_diff / 255.0);
+    blur_radius = clamp(blur_radius, 0.0, 31.0);
+
+    if (blur_radius < 0.5) { return color; }
+
+    let sigma = blur_radius / 2.0 + 0.5;
+    var total_color: vec3<f32> = vec3<f32>(0.0);
+    var total_weight: f32 = 0.0;
+
+    let half_kernel = i32(ceil(blur_radius));
+    for (var ky = -half_kernel; ky <= half_kernel; ky = ky + 1) {
+        for (var kx = -half_kernel; kx <= half_kernel; kx = kx + 1) {
+            let dist_sq = f32(kx * kx + ky * ky);
+            if (dist_sq > blur_radius * blur_radius) { continue; }
+
+            let weight = exp(-dist_sq / (2.0 * sigma * sigma));
+
+            let sample_x = clamp(absolute_coord_i.x + kx, 0, full_dims.x - 1);
+            let sample_y = clamp(absolute_coord_i.y + ky, 0, full_dims.y - 1);
+            let sample_coord_u32 = vec2<u32>(u32(sample_x), u32(sample_y));
+
+            let sample_depth = textureLoad(depth_map_texture, sample_coord_u32, 0).r * 255.0;
+            let sample_diff = abs(sample_depth - focus_dist);
+            let sample_radius = dof_amount * (sample_diff / 255.0);
+            let depth_weight = exp(-sample_radius / (smoothness * 8.0));
+
+            total_color += textureLoad(input_texture, sample_coord_u32, 0).rgb * weight * depth_weight;
+            total_weight += weight * depth_weight;
+        }
+    }
+
+    if (total_weight < 0.001) { return color; }
+    return total_color / total_weight;
 }
 
 fn interpolate_cubic_hermite(x: f32, p1: Point, p2: Point, m1: f32, m2: f32) -> f32 {
@@ -1631,6 +1684,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         } else {
             composite_rgb_linear = mix(composite_rgb_linear, vec3<f32>(1.0), v_amount * vignette_mask);
         }
+    }
+
+    if (adjustments.global.dof_blur_radius > 0.01) {
+        composite_rgb_linear = apply_dof_blur(composite_rgb_linear, absolute_coord, absolute_coord_i);
     }
 
     var base_srgb: vec3<f32>;
