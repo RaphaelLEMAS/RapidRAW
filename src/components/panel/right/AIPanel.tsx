@@ -64,6 +64,9 @@ import { useUIStore } from '../../../store/useUIStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
 import { useAiMasking } from '../../../hooks/useAiMasking';
 
+// DEPTH OF FIELD IMPORTS
+import DofPanel from './DofPanel';
+
 interface ConnectionStatusProps {
   isConnected: boolean;
 }
@@ -252,6 +255,7 @@ export default function AIPanel() {
   const [copiedSubMask, setCopiedSubMask] = useState<SubMask | null>(null);
 
   const [collapsibleState, setCollapsibleState] = useState({
+    dof: true,
     generative: true,
     properties: true,
   });
@@ -1620,6 +1624,16 @@ function SettingsPanel({
       className={`space-y-2 transition-opacity duration-300 ${!isActive ? 'opacity-50 pointer-events-none' : ''}`}
       onClick={(e) => e.stopPropagation()}
     >
+      <CollapsibleSection
+        title="Portrait Blur"
+        isOpen={collapsibleState.dof}
+        onToggle={() => handleToggleSection('dof')}
+        canToggleVisibility={false}
+        isContentVisible={true}
+      >
+        <DofPanel />
+      </CollapsibleSection>
+
       <CollapsibleSection
         title="Generative Replace"
         isOpen={collapsibleState.generative}

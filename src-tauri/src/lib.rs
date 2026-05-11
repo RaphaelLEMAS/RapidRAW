@@ -14,6 +14,7 @@ mod app_settings;
 mod app_state;
 mod cache_utils;
 mod culling;
+mod depth_of_field;
 mod denoising;
 mod exif_processing;
 mod export_processing;
@@ -2258,7 +2259,8 @@ pub fn run() {
             ai_commands::generate_ai_foreground_mask,
             ai_commands::generate_ai_sky_mask,
             ai_commands::generate_ai_depth_mask,
-            ai_commands::check_ai_connector_status,
+             depth_of_field::apply_depth_blur,
+             ai_commands::check_ai_connector_status,
             ai_commands::test_ai_connector_connection,
             ai_commands::invoke_generative_replace_with_mask_def,
             denoising::apply_denoising,

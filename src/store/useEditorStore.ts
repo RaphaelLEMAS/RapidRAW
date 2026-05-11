@@ -54,6 +54,15 @@ interface EditorState {
   liveRotation: number | null;
   brushSettings: BrushSettings | null;
 
+  // Depth of Field (Portrait Blur)
+  dofEnabled: boolean;
+  dofFocusDistance: number;
+  dofBlurAmount: number;
+  dofBokehThreshold: number;
+  dofNumRings: number;
+  dofSamplesPerRing: number;
+  dofBokehShape: 'circular' | 'hexagonal';
+
   // Masks & AI
   activeMaskContainerId: string | null;
   activeMaskId: string | null;
@@ -120,6 +129,15 @@ export const useEditorStore = create<EditorState>((set) => ({
   copiedMask: null,
   brushSettings: { size: 50, feather: 50, tool: ToolType.Brush },
   copiedAdjustments: null,
+
+  // Depth of Field defaults
+  dofEnabled: false,
+  dofFocusDistance: 0.5,
+  dofBlurAmount: 8,
+  dofBokehThreshold: 0.03,
+  dofNumRings: 3,
+  dofSamplesPerRing: 7,
+  dofBokehShape: 'circular',
 
   isGeneratingAiMask: false,
   isAIConnectorConnected: false,
