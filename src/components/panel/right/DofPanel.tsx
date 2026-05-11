@@ -3,13 +3,18 @@ import Switch from '../../ui/Switch';
 import Text from '../../ui/Text';
 import { TEXT_COLOR_KEYS, TextVariants, TextWeights } from '../../../types/typography';
 import { useDepthOfField } from '../../../hooks/useDepthOfField';
+import { useEditorStore } from '../../../store/useEditorStore';
 
-interface DofPanelProps {
-    onDragStateChange?: (isDragging: boolean) => void;
-}
+export default function DofPanel() {
+    const dof = useDepthOfField();
+    const setEditor = useEditorStore((s) => s.setEditor);
 
-export default function DofPanel({ onDragStateChange }: DofPanelProps) {
-    const { state, onSliderChange, onDragEnd, toggleEnabled } = useDepthOfField();
+    // Handle drag state changes internally to avoid parent scope dependency
+    const handleDragStateChange = (dragging: boolean) => {
+        setEditor({ isSliderDragging: dragging });
+    };
+
+    const { state, onSliderChange, onDragEnd, toggleEnabled } = dof;
 
     return (
         <div className="flex flex-col gap-5 p-2">
@@ -33,7 +38,7 @@ export default function DofPanel({ onDragStateChange }: DofPanelProps) {
                 <Slider
                     min={0} max={1} step={0.01}
                     value={state.focusDistance}
-                    onDragStateChange={onDragStateChange}
+                    onDragStateChange={handleDragStateChange}
                     onChange={(e) => onSliderChange({ focusDistance: parseFloat(e.target.value) })}
                     onDragEnd={onDragEnd}
                 />
@@ -51,7 +56,7 @@ export default function DofPanel({ onDragStateChange }: DofPanelProps) {
                 <Slider
                     min={0} max={40} step={1}
                     value={state.blurAmount}
-                    onDragStateChange={onDragStateChange}
+                    onDragStateChange={handleDragStateChange}
                     onChange={(e) => onSliderChange({ blurAmount: parseFloat(e.target.value) })}
                     onDragEnd={onDragEnd}
                 />
@@ -69,7 +74,7 @@ export default function DofPanel({ onDragStateChange }: DofPanelProps) {
                 <Slider
                     min={0.0} max={0.2} step={0.005}
                     value={state.bokehThreshold}
-                    onDragStateChange={onDragStateChange}
+                    onDragStateChange={handleDragStateChange}
                     onChange={(e) => onSliderChange({ bokehThreshold: parseFloat(e.target.value) })}
                     onDragEnd={onDragEnd}
                 />

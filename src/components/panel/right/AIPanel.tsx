@@ -1631,7 +1631,7 @@ function SettingsPanel({
         canToggleVisibility={false}
         isContentVisible={true}
       >
-        <DofPanel onDragStateChange={(isDragging) => setEditor({ isSliderDragging: isDragging })} />
+        <DofPanel />
       </CollapsibleSection>
 
       <CollapsibleSection
