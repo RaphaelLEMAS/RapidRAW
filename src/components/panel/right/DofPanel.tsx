@@ -2,7 +2,7 @@ import Slider from '../../ui/Slider';
 import Switch from '../../ui/Switch';
 import Text from '../../ui/Text';
 import { TEXT_COLOR_KEYS, TextVariants, TextWeights } from '../../../types/typography';
-import { useDepthOfField } from '../../hooks/useDepthOfField';
+import { useDepthOfField } from '../../../hooks/useDepthOfField';
 
 interface DofPanelProps {
     onDragStateChange?: (isDragging: boolean) => void;
