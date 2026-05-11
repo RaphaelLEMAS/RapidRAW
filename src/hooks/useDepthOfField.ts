@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Invokes } from '../components/ui/AppProperties';
-import { useEditorStore } from './useEditorStore';
+import { useEditorStore } from '../store/useEditorStore';
 
 export interface DepthOfFieldState {
     enabled: boolean;
