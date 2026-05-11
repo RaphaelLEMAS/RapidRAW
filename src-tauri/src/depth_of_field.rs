@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use half::f16;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, Rgba};
 use wgpu::util::DeviceExt;
@@ -9,7 +7,7 @@ use crate::app_state::AppState;
 use crate::gpu_processing::{
     get_or_init_gpu_context, process_and_get_dynamic_image_with_analytics, RenderRequest,
 };
-use crate::image_processing::{downscale_f32_image, resolve_tonemammer_override_from_handle};
+use crate::image_processing::downscale_f32_image;
 use crate::mask_generation::MaskDefinition;
 use crate::{calculate_transform_hash, get_or_load_lut};
 
@@ -83,7 +81,7 @@ impl DepthOfFieldConfig {
 /// Get the cached depth map from AiState for a given image + geometry adjustments.
 fn get_cached_depth_map(
     state: &tauri::State<AppState>,
-    js_adjustments: &serde_json::Value,
+    _js_adjustments: &serde_json::Value,
 ) -> Result<Option<CachedDepthMap>, String> {
     // The path comes from the loaded image in AppState, not from adjustments JSON.
     let ai_guard = state.ai_state.lock().map_err(|e| format!("AI state locked: {}", e))?;
@@ -114,7 +112,7 @@ fn normalize_depth(data: &[u8], width: usize, height: usize) -> Vec<f32> {
 fn read_texture_f16(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    texture_view: &wgpu::TextureView,
+    texture: &wgpu::Texture,
     width: u32,
     height: u32,
 ) -> Result<Vec<u8>, String> {
@@ -137,10 +135,10 @@ fn read_texture_f16(
         label: Some("Bokeh Readback Encoder"),
     });
 
-    // Use TexelCopyTextureInfo (not ImageCopyTexture — wgpu 28.x API)
+    // TexelCopyTextureInfo expects &wgpu::Texture (not TextureView) in wgpu 28.x.
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
-            texture: texture_view,
+            texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
@@ -164,19 +162,15 @@ fn read_texture_f16(
         let _ = tx.send(result);
     });
 
-    match device.poll(wgpu::PollType::Wait {
-        submission_index: None,
-        timeout: Some(std::time::Duration::from_secs(60)),
-    }) {
-        Ok(()) => {}
-        Err(e) => return Err(format!("GPU poll failed: {}", e)),
-    }
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: Some(std::time::Duration::from_secs(60)),
+        })
+        .map_err(|e| format!("GPU poll failed: {}", e))?;
 
-    match rx.recv() {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => return Err(format!("Buffer map async failed: {}", e)),
-        Err(_) => return Err("Buffer map channel closed".to_string()),
-    }
+    let map_result = rx.recv().map_err(|e| format!("Buffer map channel closed: {}", e))?;
+    map_result.map_err(|e| format!("Buffer map async failed: {}", e))?;
 
     let padded_data = buffer_slice.get_mapped_range().to_vec();
     output_buffer.unmap();
@@ -282,7 +276,7 @@ fn build_bokeh_pipeline(
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Bokeh Pipeline Layout"),
         bind_group_layouts: &[&bgl],
-        push_constant_ranges: &[],
+        immediate_size: 0,
     });
 
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -308,56 +302,41 @@ fn apply_bokeh_pass(
     config: &DepthOfFieldConfig,
     bgl: wgpu::BindGroupLayout,
     pipeline: wgpu::ComputePipeline,
-) -> Result<wgpu::TextureView, String> {
-    // Create input texture using create_texture_with_data (wgpu 28.x pattern).
-    let input_texture = device.create_texture(&wgpu::TextureDescriptor {
+) -> Result<wgpu::Texture, String> {
+    // Create and upload input texture using create_texture_with_data (wgpu 28.x pattern).
+    let input_desc = wgpu::TextureDescriptor {
         label: Some("Bokeh Input Texture"),
         size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba16Float,
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
-    });
-
-    // Upload using create_texture_with_data (handles queue write internally).
-    device.create_texture_with_data(
-        queue,
-        &input_texture,
-        wgpu::util::TextureDataOrder::MipMajor,
-        input_data,
-    );
-
+    };
+    let input_texture = device.create_texture_with_data(queue, &input_desc, wgpu::util::TextureDataOrder::MipMajor, input_data);
     let input_view = input_texture.create_view(&Default::default());
 
-    // Create depth texture from normalized data.
-    let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+    // Create and upload depth texture.
+    let depth_desc = wgpu::TextureDescriptor {
         label: Some("Bokeh Depth Texture"),
         size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::R32Float,
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
-    });
-
+    };
+    let depth_texture = device.create_texture_with_data(queue, &depth_desc, wgpu::util::TextureDataOrder::MipMajor, bytemuck::cast_slice(depth_data));
     let depth_view = depth_texture.create_view(&Default::default());
-    // Upload using create_texture_with_data (wgpu 28.x pattern — same as gpu_processing.rs).
-    device.create_texture_with_data(
-        queue,
-        &depth_texture,
-        wgpu::util::TextureDataOrder::MipMajor,
-        bytemuck::cast_slice(depth_data),
-    );
 
     // Create output texture (Rgba16Float for HDR accumulation).
-    let output_texture = device.create_texture(&wgpu::TextureDescriptor {
+    let output_desc = wgpu::TextureDescriptor {
         label: Some("Bokeh Output Texture"),
         size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba16Float,
         usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
-    });
-
+    };
+    let output_texture = device.create_texture(&output_desc);
     let output_view = output_texture.create_view(&Default::default());
 
     // Uniform buffer for bokeh params (32 bytes — 8 × u32/f32).
@@ -404,7 +383,7 @@ fn apply_bokeh_pass(
 
     queue.submit(Some(encoder.finish()));
 
-    Ok(output_view)
+    Ok(output_texture)
 }
 
 /// Main entry point: Tauri command handler for depth-of-field blur.
@@ -446,8 +425,8 @@ pub async fn apply_depth_blur(
         let scale_factor = 640.0 / original_w.max(1) as f32;
         ((original_w as f32 * scale_factor).round() as u32, (original_h as f32 * scale_factor).round() as u32)
     } else if let Some(res) = target_resolution {
-        let w = res.get("width").and_then(|v| v.as_u64()).unwrap_or(original_w) as u32;
-        let h = res.get("height").and_then(|v| v.as_u64()).unwrap_or(original_h) as u32;
+        let w = res.get("width").and_then(|v| v.as_u64()).unwrap_or(original_w as u64) as u32;
+        let h = res.get("height").and_then(|v| v.as_u64()).unwrap_or(original_h as u64) as u32;
         (w.max(1), h.max(1))
     } else {
         (original_w, original_h)
@@ -482,7 +461,7 @@ pub async fn apply_depth_blur(
 
     // Build adjustments for the main pipeline.
     let is_raw = loaded_image.is_raw;
-    let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
+    let tm_override = crate::image_processing::resolve_tonemapper_override_from_handle(&app_handle, is_raw);
     let final_adjustments = crate::image_processing::get_all_adjustments_from_json(&js_adjustments, is_raw, tm_override);
 
     // Extract mask bitmaps from adjustments.
@@ -534,30 +513,34 @@ pub async fn apply_depth_blur(
     );
 
     // Scale depth data if image dimensions differ from original depth map size.
-    let source_dw = cache_entry.original_size.0;
-    let source_dh = cache_entry.original_size.1;
     let target_w_usize = img_width as usize;
     let target_h_usize = img_height as usize;
 
-    let scaled_depth: Vec<f32> = if source_dw != target_w_usize || source_dh != target_h_usize {
-        let mut resized = vec![0.0f32; (target_w * target_h) as usize];
-        for y in 0..target_h_usize {
-            for x in 0..target_w_usize {
-                let sx = ((x as f32 * source_dw as f32 / target_w_usize as f32).round() as usize).min(source_dw - 1);
-                let sy = ((y as f32 * source_dh as f32 / target_h_usize as f32).round() as usize).min(source_dh - 1);
-                resized[y * target_w_usize + x] = depth_normalized[sy * source_dw + sx];
+    let scaled_depth: Vec<f32> = {
+        let source_dw_u32 = cache_entry.original_size.0;
+        let source_dh_u32 = cache_entry.original_size.1;
+        if (source_dw_u32 as usize) != target_w_usize || (source_dh_u32 as usize) != target_h_usize {
+            let mut resized = vec![0.0f32; (target_w * target_h) as usize];
+            for y in 0..target_h_usize {
+                for x in 0..target_w_usize {
+                    let sx = ((x as f32 * source_dw_u32 as f32 / target_w_usize as f32).round() as u32).min(source_dw_u32 - 1);
+                    let sy = ((y as f32 * source_dh_u32 as f32 / target_h_usize as f32).round() as u32).min(source_dh_u32 - 1);
+                    resized[y * target_w_usize + x] = depth_normalized[(sy * source_dw_u32 + sx) as usize];
+                }
             }
+            resized
+        } else {
+            let source_dw_usize = cache_entry.original_size.0 as usize;
+            let source_dh_usize = cache_entry.original_size.1 as usize;
+            depth_normalized.iter().copied().collect()
         }
-        resized
-    } else {
-        depth_normalized
     };
 
     // Step 7: Build bokeh compute pipeline.
     let (bgl, pipeline) = build_bokeh_pipeline(device)?;
 
     // Step 8: Apply bokeh compute shader pass.
-    let output_view = apply_bokeh_pass(
+    let output_texture = apply_bokeh_pass(
         device, queue, bytemuck::cast_slice(&img_rgba_f16),
         &scaled_depth, img_width, img_height,
         &DepthOfFieldConfig {
@@ -569,8 +552,8 @@ pub async fn apply_depth_blur(
         bgl, pipeline,
     )?;
 
-    // Step 9: Read back result and encode as base64 PNG.
-    let readback_data = read_texture_f16(device, queue, &output_view, img_width, img_height)?;
+  // Step 9: Read back result and encode as base64 PNG.
+    let readback_data = read_texture_f16(device, queue, &output_texture, img_width, img_height)?;
     let png_base64 = f16_to_png_base64(&readback_data, img_width, img_height)?;
 
     Ok(format!("data:image/png;base64,{}", png_base64))
