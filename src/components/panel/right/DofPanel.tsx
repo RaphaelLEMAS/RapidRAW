@@ -18,7 +18,7 @@ export default function DofPanel({ onDragStateChange }: DofPanelProps) {
                 <Text variant={TextVariants.label} color={TEXT_COLOR_KEYS['text-primary']}>
                     Portrait Blur
                 </Text>
-                <Switch checked={state.enabled} onChange={toggleEnabled} />
+                <Switch checked={state.enabled} onChange={toggleEnabled} label="Portrait Blur" />
             </div>
 
             {/* Focus Distance */}
