@@ -950,7 +950,7 @@ impl GpuProcessor {
             dimension: wgpu::TextureDimension::D3,
             ..dummy_texture_desc
         });
-         dummy_lut_view = dummy_lut_texture.create_view(&Default::default());
+        let dummy_lut_view = dummy_lut_texture.create_view(&Default::default());
         let dummy_lut_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
 
         let depth_map_dummy_desc = wgpu::TextureDescriptor {
@@ -967,8 +967,8 @@ impl GpuProcessor {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         };
-        let depth_map_dummy = device.create_texture(&depth_map_dummy_desc);
-        let depth_map_view = depth_map_dummy.create_view(&Default::default());
+       let depth_map_texture = device.create_texture(&depth_map_dummy_desc);
+        let depth_map_view = depth_map_texture.create_view(&Default::default());
 
         let max_tile_size = wgpu::Extent3d {
             width: max_width,
@@ -1087,13 +1087,13 @@ impl GpuProcessor {
             tonal_blur_view,
             clarity_blur_view,
             structure_blur_view,
-           tile_output_texture,
+            tile_output_texture,
             tile_output_texture_view,
             working_texture,
             working_texture_view,
             output_texture,
             output_texture_view,
-            depth_map_dummy,
+            depth_map_texture,
             depth_map_view,
         })
     }
@@ -1430,12 +1430,12 @@ impl GpuProcessor {
                 let did_create_clarity_blur = run_blur(8.0, &self.clarity_blur_view);
                 let did_create_structure_blur = run_blur(40.0, &self.structure_blur_view);
 
-                let use_dof = adjustments.global.dof_blur_radius > 0.01;
+let use_dof = adjustments.global.dof_blur_radius > 0.01;
                 let (depth_map_texture_ref, _depth_texture_cleanup) = if use_dof {
                     let mut depth_data: Vec<u8> = vec![127; width as usize * height as usize];
-                    if let Ok(ai_state_lock) = state.ai_state.lock() {
-                        if let Some(ai_state) = ai_state_lock.as_ref() {
-         if let Some(ref cached_depth) = ai_state.depth_map {
+                    if let Some(state_ref) = state {
+                        if let Ok(ai_state_guard) = state_ref.ai_state.lock() {
+                            if let Some(ref cached_depth) = ai_state_guard.as_ref().and_then(|s| s.depth_map.as_ref()) {
                                 if cached_depth.depth_image.width() > 0 && cached_depth.depth_image.height() > 0 {
                                     let src_w = cached_depth.depth_image.width();
                                     let src_h = cached_depth.depth_image.height();
@@ -1460,33 +1460,23 @@ impl GpuProcessor {
                         height,
                         depth_or_array_layers: 1,
                     };
-                    let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-                        label: Some("DOF Depth Map Texture"),
-                        size: depth_texture_size,
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::R8Unorm,
-                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                        view_formats: &[],
-                    });
+               let depth_texture = device.create_texture_with_data(
+                    queue,
+                        &wgpu::TextureDescriptor {
+                            label: Some("DOF Depth Map Texture"),
+                            size: depth_texture_size,
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: wgpu::TextureFormat::R8Unorm,
+                            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                            view_formats: &[],
+                        },
+                        wgpu::util::TextureDataOrder::MipMajor,
+                        &depth_data,
+                    );
 
                     let depth_view = depth_texture.create_view(&Default::default());
-                    queue.write_texture(
-                        wgpu::TexelCopyTextureInfo {
-                            texture: &depth_texture,
-                            mip_level: 0,
-                            origin: wgpu::Origin3d::ZERO,
-                            aspect: wgpu::TextureAspect::All,
-                        },
-                        &depth_data,
-                        wgpu::TextureDataLayout {
-                            offset: 0,
-                            bytes_per_row: Some(width),
-                            rows_per_image: Some(height),
-                        },
-                        depth_texture_size,
-                    );
 
                     (depth_view, Some(depth_texture))
                 } else {
