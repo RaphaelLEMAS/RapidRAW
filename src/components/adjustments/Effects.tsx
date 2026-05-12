@@ -1,5 +1,5 @@
 import Slider from '../ui/Slider';
-import { Adjustments, Effect, CreativeAdjustment } from '../../utils/adjustments';
+import { Adjustments, Effect, CreativeAdjustment, DepthAdjustment } from '../../utils/adjustments';
 import LUTControl from '../ui/LUTControl';
 import { AppSettings } from '../ui/AppProperties';
 import Text from '../ui/Text';
@@ -71,7 +71,7 @@ export default function EffectsPanel({
           onDragStateChange={onDragStateChange}
         />
 
-        {!isForMask && (
+    {!isForMask && (
           <Slider
             label="Light Flares"
             max={100}
@@ -83,6 +83,46 @@ export default function EffectsPanel({
           />
         )}
       </div>
+
+      {!isForMask && (
+        <div className="p-2 bg-bg-tertiary rounded-md">
+          <Text variant={TextVariants.heading} className="mb-2">
+            Depth of Field
+          </Text>
+
+          <Slider
+            label="Blur Amount"
+            max={100}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(DepthAdjustment.DofBlurAmount, e.target.value)}
+            step={1}
+            value={adjustments.dofBlurAmount}
+            onDragStateChange={onDragStateChange}
+          />
+
+          <Slider
+            label="Focus Distance"
+            max={100}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(DepthAdjustment.DofFocusDistance, e.target.value)}
+            step={1}
+            value={adjustments.dofFocusDistance}
+            onDragStateChange={onDragStateChange}
+            fillOrigin="min"
+          />
+
+          <Slider
+            label="Transition Smoothness"
+            max={100}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(DepthAdjustment.DofTransitionSmoothness, e.target.value)}
+            step={1}
+            value={adjustments.dofTransitionSmoothness}
+            onDragStateChange={onDragStateChange}
+            fillOrigin="min"
+          />
+        </div>
+      )}
 
       {!isForMask && (
         <div className="space-y-4">

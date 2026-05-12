@@ -540,6 +540,11 @@ pub struct GpuProcessor {
     pub working_texture_view: wgpu::TextureView,
     pub output_texture: wgpu::Texture,
     pub output_texture_view: wgpu::TextureView,
+
+    #[allow(dead_code)]
+    depth_map_texture: wgpu::Texture,
+    #[allow(dead_code)]
+    depth_map_view: wgpu::TextureView,
 }
 
 const FLARE_MAP_SIZE: u32 = 512;
@@ -888,6 +893,16 @@ impl GpuProcessor {
             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
             count: None,
         });
+        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: 12,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        });
 
         let main_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Main BGL"),
@@ -911,7 +926,7 @@ impl GpuProcessor {
 
         let adjustments_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Adjustments Buffer"),
-            size: std::mem::size_of::<AllAdjustments>() as u64,
+            size: std::mem::size_of::<AllAdjustments>() as u64 + 4,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -939,6 +954,23 @@ impl GpuProcessor {
         });
         let dummy_lut_view = dummy_lut_texture.create_view(&Default::default());
         let dummy_lut_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+
+        let depth_map_dummy_desc = wgpu::TextureDescriptor {
+            label: Some("Depth Map Dummy Texture"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        };
+       let depth_map_texture = device.create_texture(&depth_map_dummy_desc);
+        let depth_map_view = depth_map_texture.create_view(&Default::default());
 
         let max_tile_size = wgpu::Extent3d {
             width: max_width,
@@ -1063,6 +1095,8 @@ impl GpuProcessor {
             working_texture_view,
             output_texture,
             output_texture_view,
+            depth_map_texture,
+            depth_map_view,
         })
     }
 
@@ -1072,6 +1106,7 @@ impl GpuProcessor {
         width: u32,
         height: u32,
         request: RenderRequest,
+        state: Option<&tauri::State<AppState>>,
         skip_cpu_readback: bool,
         output_to_display: bool,
     ) -> Result<(Vec<u8>, u32, u32, u32, u32), String> {
@@ -1397,6 +1432,59 @@ impl GpuProcessor {
                 let did_create_clarity_blur = run_blur(8.0, &self.clarity_blur_view);
                 let did_create_structure_blur = run_blur(40.0, &self.structure_blur_view);
 
+let use_dof = adjustments.global.dof_blur_radius > 0.01;
+                let (depth_map_texture_ref, _depth_texture_cleanup) = if use_dof {
+                    let mut depth_data: Vec<u8> = vec![127; width as usize * height as usize];
+                    if let Some(state_ref) = state {
+                        if let Ok(ai_state_guard) = state_ref.ai_state.lock() {
+                            if let Some(ref cached_depth) = ai_state_guard.as_ref().and_then(|s| s.depth_map.as_ref()) {
+                                if cached_depth.depth_image.width() > 0 && cached_depth.depth_image.height() > 0 {
+                                    let src_w = cached_depth.depth_image.width();
+                                    let src_h = cached_depth.depth_image.height();
+                                    // Resize depth map to match input dimensions using bilinear interpolation
+                                    if (src_w, src_h) != (width as u32, height as u32) {
+                                        depth_data = image::imageops::resize(
+                                            &cached_depth.depth_image,
+                                            width as u32,
+                                            height as u32,
+                                            image::imageops::FilterType::Triangle,
+                                        ).into_raw();
+                                     } else {
+                                        depth_data = cached_depth.depth_image.clone().into_raw();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let depth_texture_size = wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    };
+               let depth_texture = device.create_texture_with_data(
+                    queue,
+                        &wgpu::TextureDescriptor {
+                            label: Some("DOF Depth Map Texture"),
+                            size: depth_texture_size,
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: wgpu::TextureFormat::R8Unorm,
+                            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                            view_formats: &[],
+                        },
+                        wgpu::util::TextureDataOrder::MipMajor,
+                        &depth_data,
+                    );
+
+                    let depth_view = depth_texture.create_view(&Default::default());
+
+                    (depth_view, Some(depth_texture))
+                } else {
+                    (self.depth_map_view.clone(), None)
+                };
+
                 let mut main_encoder = device.create_command_encoder(&Default::default());
 
                 let mut tile_adjustments = adjustments;
@@ -1482,6 +1570,10 @@ impl GpuProcessor {
                 bind_group_entries.push(wgpu::BindGroupEntry {
                     binding: 10 + MAX_MASK_BINDINGS,
                     resource: wgpu::BindingResource::Sampler(&self.flare_sampler),
+                });
+                bind_group_entries.push(wgpu::BindGroupEntry {
+                    binding: 12,
+                    resource: wgpu::BindingResource::TextureView(&depth_map_texture_ref),
                 });
 
                 let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1781,6 +1873,7 @@ fn process_and_get_dynamic_image_inner(
         cache.width,
         cache.height,
         request,
+        Some(state),
         skip_readback,
         output_to_display,
     )?;

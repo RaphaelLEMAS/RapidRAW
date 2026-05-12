@@ -1330,6 +1330,10 @@ pub struct GlobalAdjustments {
     pub halation_amount: f32,
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
+
+    pub dof_blur_radius: f32,
+    pub dof_focus_distance: f32,
+    pub dof_transition_smoothness: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -1446,6 +1450,13 @@ struct AdjustmentScales {
     glow: f32,
     halation: f32,
     flares: f32,
+
+    #[allow(dead_code)]
+    dof_blur_radius: f32,
+    #[allow(dead_code)]
+    dof_focus_distance: f32,
+    #[allow(dead_code)]
+    dof_transition_smoothness: f32,
 }
 
 const SCALES: AdjustmentScales = AdjustmentScales {
@@ -1495,6 +1506,10 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     glow: 100.0,
     halation: 100.0,
     flares: 100.0,
+
+    dof_blur_radius: 50.0,
+    dof_focus_distance: 1.0,
+    dof_transition_smoothness: 1.0,
 };
 
 fn parse_hsl_adjustments(js_hsl: &serde_json::Value) -> [HslColor; 8] {
@@ -2047,6 +2062,10 @@ fn get_global_adjustments_from_json(
             SCALES.sharpness_threshold,
             Some(10.0),
         ),
+
+dof_blur_radius: get_val("effects", "dofBlurAmount", 50.0, None) / 2.0,
+        dof_focus_distance: if is_visible("effects") { js_adjustments["dofFocusDistance"].as_f64().unwrap_or(50.0) as f32 / 100.0 * 255.0 } else { 0.0 },
+        dof_transition_smoothness: if is_visible("effects") { js_adjustments["dofTransitionSmoothness"].as_f64().unwrap_or(50.0) as f32 / 100.0 * 4.0 } else { 0.0 },
     }
 }
 
