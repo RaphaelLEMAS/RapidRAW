@@ -1449,8 +1449,8 @@ let use_dof = adjustments.global.dof_blur_radius > 0.01;
                                             height as u32,
                                             image::imageops::FilterType::Triangle,
                                         ).into_raw();
-                                    } else {
-                                        depth_data = cached_depth.depth_image.into_raw();
+                                     } else {
+                                        depth_data = cached_depth.depth_image.clone().into_raw();
                                     }
                                 }
                             }
