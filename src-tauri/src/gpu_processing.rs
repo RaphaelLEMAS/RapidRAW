@@ -541,7 +541,9 @@ pub struct GpuProcessor {
     pub output_texture: wgpu::Texture,
     pub output_texture_view: wgpu::TextureView,
 
+    #[allow(dead_code)]
     depth_map_texture: wgpu::Texture,
+    #[allow(dead_code)]
     depth_map_view: wgpu::TextureView,
 }
 
@@ -924,7 +926,7 @@ impl GpuProcessor {
 
         let adjustments_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Adjustments Buffer"),
-            size: std::mem::size_of::<AllAdjustments>() as u64,
+            size: std::mem::size_of::<AllAdjustments>() as u64 + 4,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1448,7 +1450,7 @@ let use_dof = adjustments.global.dof_blur_radius > 0.01;
                                             image::imageops::FilterType::Triangle,
                                         ).into_raw();
                                     } else {
-                                        depth_data = cached_depth.depth_image.clone().into_raw();
+                                        depth_data = cached_depth.depth_image.into_raw();
                                     }
                                 }
                             }

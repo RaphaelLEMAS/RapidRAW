@@ -1451,8 +1451,11 @@ struct AdjustmentScales {
     halation: f32,
     flares: f32,
 
+    #[allow(dead_code)]
     dof_blur_radius: f32,
+    #[allow(dead_code)]
     dof_focus_distance: f32,
+    #[allow(dead_code)]
     dof_transition_smoothness: f32,
 }
 
